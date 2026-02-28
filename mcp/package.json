@@ -1,0 +1,18 @@
+{
+  "name": "mcp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "mcp:tavily": "tavily-mcp",
+    "mcp:hf:stdio": "huggingface-mcp-server --transport stdio --api-key $HUGGINGFACE_API_KEY",
+    "mcp:hf:http": "huggingface-mcp-server --transport http --port 3334 --api-key $HUGGINGFACE_API_KEY"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "huggingface-mcp-server": "^1.0.26",
+    "tavily-mcp": "^0.2.17"
+  }
+}
