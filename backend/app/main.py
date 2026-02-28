@@ -10,6 +10,7 @@ from app.routers.session import router as session_router
 from app.services.llm import LLMService
 from app.services.mcp import MCPToolProvider
 from app.services.transcription import TranscriptionService
+from app.services.tts import TTSService
 from app.storage.session_store import SessionStore
 
 
@@ -23,10 +24,12 @@ async def lifespan(app: FastAPI):
 
     mcp_provider = MCPToolProvider(settings)
     llm_service = LLMService(settings, mcp_provider=mcp_provider)
+    tts_service = TTSService(settings)
 
     app.state.settings = settings
     app.state.transcription_service = transcription_service
     app.state.llm_service = llm_service
+    app.state.tts_service = tts_service
     app.state.mcp_provider = mcp_provider
     app.state.graph_service = ChecklistGraphService(llm_service)
     app.state.session_store = SessionStore()

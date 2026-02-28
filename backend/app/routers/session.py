@@ -5,7 +5,7 @@ import base64
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from app.agent.state import AgentState
 from app.models.session import (
@@ -227,3 +227,25 @@ async def download_markdown(session_id: str, request: Request):
         "Content-Disposition": f"attachment; filename=checklist-{session_id}.md",
     }
     return PlainTextResponse(content=session.markdown_content, headers=headers)
+
+
+@router.get("/{session_id}/summary-audio")
+async def get_summary_audio(session_id: str, request: Request):
+    store = request.app.state.session_store
+    tts_service = request.app.state.tts_service
+
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.is_complete:
+        raise HTTPException(status_code=400, detail="Session is not completed")
+
+    audio_bytes, content_type = await tts_service.synthesize_summary(session)
+    return Response(
+        content=audio_bytes,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f"inline; filename=summary-{session_id}.wav",
+        },
+    )

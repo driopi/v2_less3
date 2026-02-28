@@ -159,6 +159,23 @@ class LLMService:
 
         return response_text
 
+    def ensure_distinct_round_summary(
+        self,
+        round_number: int,
+        answers: List[Answer],
+        previous_summaries: List[str],
+        candidate: str,
+    ) -> str:
+        normalized_candidate = self._normalize_summary(candidate)
+        if not normalized_candidate:
+            return self._fallback_round_summary(round_number, answers)
+
+        normalized_previous = {self._normalize_summary(item) for item in previous_summaries}
+        if normalized_candidate in normalized_previous:
+            return self._fallback_round_summary(round_number, answers)
+
+        return candidate.strip()
+
     async def build_final_checklist(
         self,
         goal: str,
@@ -327,6 +344,10 @@ class LLMService:
         if len(single_line) <= limit:
             return single_line
         return single_line[: limit - 1].rstrip() + "…"
+
+    @staticmethod
+    def _normalize_summary(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().lower().strip(".,!?;:")
 
     def _fallback_round_summary(self, round_number: int, answers: List[Answer]) -> str:
         if not answers:

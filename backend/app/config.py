@@ -45,6 +45,10 @@ class Settings:
     mcp_huggingface_command: Optional[str]
     tavily_api_key: Optional[str]
     huggingface_api_key: Optional[str]
+    tts_provider: str
+    tts_model: str
+    tts_timeout_seconds: int
+    tts_max_chars: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -66,6 +70,10 @@ class Settings:
             mcp_huggingface_command=os.getenv("MCP_HUGGINGFACE_COMMAND"),
             tavily_api_key=os.getenv("TAVILY_API_KEY"),
             huggingface_api_key=os.getenv("HUGGINGFACE_API_KEY"),
+            tts_provider=os.getenv("TTS_PROVIDER", "auto"),
+            tts_model=os.getenv("TTS_MODEL", "facebook/mms-tts-rus"),
+            tts_timeout_seconds=int(os.getenv("TTS_TIMEOUT_SECONDS", "45")),
+            tts_max_chars=int(os.getenv("TTS_MAX_CHARS", "900")),
         )
 
     @staticmethod

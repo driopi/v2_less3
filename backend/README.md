@@ -14,6 +14,7 @@ app_port: 7860
 - LangGraph workflow для генерации вопросов и финального чеклиста
 - LLM генерация через Gemini 2.5 Flash (с fallback на mock)
 - Локальная транскрипция через `openai/whisper-small`
+- Озвучка итогов с легкой TTS-моделью (`facebook/mms-tts-rus`) через HF Inference API + mock fallback
 - Превью транскрипции и финальная генерация Markdown
 - Опциональный MCP bridge для Tavily/Hugging Face tools
 - Preflight тесты без запуска реальной Whisper (`mock` режим)
@@ -42,6 +43,15 @@ export WHISPER_MODE=local
 uvicorn app.main:app --reload --port 7860
 ```
 
+## Реальная проверка TTS (оптимизированный режим)
+```bash
+cd backend
+export TTS_PROVIDER=auto
+export TTS_MODEL=facebook/mms-tts-rus
+export HUGGINGFACE_API_KEY=hf_...
+uvicorn app.main:app --reload --port 7860
+```
+
 ## Hugging Face Spaces (Docker)
 1. Создайте Docker Space.
 2. Загрузите `backend/` как содержимое Space.
@@ -61,6 +71,7 @@ HF_SPACE_ID=username/space-name ./scripts/deploy_hf_space.sh
 - `POST /api/session/{id}/submit`
 - `GET /api/session/{id}/results`
 - `GET /api/session/{id}/download`
+- `GET /api/session/{id}/summary-audio`
 - `GET /health`
 
 Поддерживается два формата передачи аудио:

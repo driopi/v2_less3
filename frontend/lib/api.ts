@@ -124,6 +124,20 @@ export async function getResults(sessionId: string): Promise<SessionResultsRespo
   return res.json();
 }
 
+export async function getSummaryAudio(sessionId: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_URL}/api/session/${sessionId}/summary-audio`, { cache: "no-store" }, 60000);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Озвучка заняла слишком много времени.");
+    }
+    throw err;
+  }
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to generate summary audio"));
+  return res.blob();
+}
+
 export function downloadResults(sessionId: string): string {
   return `${API_URL}/api/session/${sessionId}/download`;
 }

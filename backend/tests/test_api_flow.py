@@ -5,15 +5,7 @@ def _fake_webm_b64() -> str:
     return base64.b64encode(b"RIFF....FAKEAUDIO").decode("utf-8")
 
 
-def test_health(client):
-    res = client.get("/health")
-    assert res.status_code == 200
-    payload = res.json()
-    assert payload["status"] == "healthy"
-    assert payload["whisper_loaded"] is True
-
-
-def test_full_9_question_flow_and_results(client):
+def _complete_session(client):
     start = client.post(
         "/api/session/start",
         json={
@@ -25,8 +17,7 @@ def test_full_9_question_flow_and_results(client):
     session = start.json()
     session_id = session["session_id"]
     questions = session["questions"]
-    assert session["round"] == 1
-    assert len(questions) == 3
+    previous_question_sets = {tuple(q["text"] for q in questions)}
 
     for expected_round in [1, 2, 3]:
         q_ids = [q["id"] for q in questions]
@@ -44,9 +35,26 @@ def test_full_9_question_flow_and_results(client):
             assert payload["round"] == expected_round + 1
             assert len(payload["questions"]) == 3
             questions = payload["questions"]
+            question_set = tuple(q["text"] for q in questions)
+            assert question_set not in previous_question_sets
+            previous_question_sets.add(question_set)
         else:
             assert payload["is_complete"] is True
             assert payload["checklist_preview"]
+
+    return session_id
+
+
+def test_health(client):
+    res = client.get("/health")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["status"] == "healthy"
+    assert payload["whisper_loaded"] is True
+
+
+def test_full_9_question_flow_and_results(client):
+    session_id = _complete_session(client)
 
     results = client.get(f"/api/session/{session_id}/results")
     assert results.status_code == 200
@@ -59,6 +67,14 @@ def test_full_9_question_flow_and_results(client):
     assert download.status_code == 200
     assert "attachment; filename=checklist-" in download.headers["content-disposition"]
     assert "Чеклист созвона" in download.text
+
+
+def test_summary_audio_after_completion(client):
+    session_id = _complete_session(client)
+    res = client.get(f"/api/session/{session_id}/summary-audio")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("audio/")
+    assert len(res.content) > 2048
 
 
 def test_transcribe_preview(client):

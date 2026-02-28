@@ -22,6 +22,12 @@ async def generate_initial_questions_node(state, llm_service):
 
 async def analyze_round_node(state, llm_service):
     summary = await llm_service.summarize_round(state["current_round"], state["latest_round_answers"])
+    summary = llm_service.ensure_distinct_round_summary(
+        round_number=state["current_round"],
+        answers=state["latest_round_answers"],
+        previous_summaries=state.get("round_summaries", []),
+        candidate=summary,
+    )
     round_summaries = [*state.get("round_summaries", []), summary]
     return {
         "round_summary": summary,
