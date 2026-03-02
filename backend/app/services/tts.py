@@ -52,15 +52,18 @@ class TTSService:
         text = text.replace("`", "").replace("*", "")
         return text[: self.settings.tts_max_chars].strip()
 
-    async def synthesize_summary(self, session: SessionData) -> Tuple[bytes, str]:
+    async def synthesize_summary(self, session: SessionData) -> Tuple[bytes, str, str]:
         text = self.build_summary_text(session)
         if self.provider == "huggingface":
             try:
-                return await self._synthesize_hf(text)
+                audio_bytes, content_type = await self._synthesize_hf(text)
+                return audio_bytes, content_type, "huggingface"
             except Exception:
                 # Non-blocking fallback: playback still works even if HF endpoint is slow/down.
-                return self._mock_wav(text)
-        return self._mock_wav(text)
+                audio_bytes, content_type = self._mock_wav(text)
+                return audio_bytes, content_type, "mock"
+        audio_bytes, content_type = self._mock_wav(text)
+        return audio_bytes, content_type, "mock"
 
     async def _synthesize_hf(self, text: str) -> Tuple[bytes, str]:
         headers = {"Accept": "audio/wav"}
@@ -71,7 +74,7 @@ class TTSService:
             "inputs": text,
             "options": {"wait_for_model": True},
         }
-        url = f"https://api-inference.huggingface.co/models/{self.settings.tts_model}"
+        url = f"https://router.huggingface.co/hf-inference/models/{self.settings.tts_model}"
 
         async with httpx.AsyncClient(timeout=self.settings.tts_timeout_seconds) as client:
             resp = await client.post(url, headers=headers, json=payload)

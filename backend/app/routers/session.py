@@ -240,12 +240,13 @@ async def get_summary_audio(session_id: str, request: Request):
     if not session.is_complete:
         raise HTTPException(status_code=400, detail="Session is not completed")
 
-    audio_bytes, content_type = await tts_service.synthesize_summary(session)
+    audio_bytes, content_type, source = await tts_service.synthesize_summary(session)
     return Response(
         content=audio_bytes,
         media_type=content_type,
         headers={
             "Cache-Control": "no-store",
             "Content-Disposition": f"inline; filename=summary-{session_id}.wav",
+            "X-TTS-Source": source,
         },
     )
