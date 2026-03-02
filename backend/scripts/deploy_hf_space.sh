@@ -16,6 +16,10 @@ if ! "$HF_BIN" auth whoami >/dev/null 2>&1; then
 fi
 
 "$HF_BIN" repo create "$HF_SPACE_ID" --repo-type space --space-sdk docker || true
-"$HF_BIN" upload "$HF_SPACE_ID" . --repo-type space --exclude ".venv/*" --exclude "__pycache__/*"
+"$HF_BIN" upload "$HF_SPACE_ID" . \
+  --repo-type space \
+  --exclude ".env" \
+  --exclude ".venv/*" \
+  --exclude "__pycache__/*"
 
 echo "Uploaded backend to https://huggingface.co/spaces/$HF_SPACE_ID"
