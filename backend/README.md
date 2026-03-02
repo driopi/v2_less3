@@ -15,6 +15,7 @@ app_port: 7860
 - LLM генерация через Gemini 2.5 Flash (с fallback на mock)
 - Локальная транскрипция через `openai/whisper-small`
 - Озвучка итогов с легкой TTS-моделью (`facebook/mms-tts-rus`) через HF Inference API + mock fallback
+- Карточка речевого портрета (стабильность, скрытое напряжение, триггеры, рекомендация) по 9 транскриптам
 - Превью транскрипции и финальная генерация Markdown
 - Опциональный MCP bridge для Tavily/Hugging Face tools
 - Preflight тесты без запуска реальной Whisper (`mock` режим)

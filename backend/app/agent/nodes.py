@@ -57,13 +57,14 @@ async def generate_next_questions_node(state, llm_service):
     }
 
 
-async def finalize_node(state, llm_service):
+async def finalize_node(state, llm_service, portrait_service):
     checklist = await llm_service.build_final_checklist(
         goal=state["goal"],
         topic=state["topic"],
         answers=state["all_answers"],
         round_summaries=state["round_summaries"],
     )
+    portrait = portrait_service.analyze(state["all_answers"])
     markdown = build_markdown(
         session_id=state["session_id"],
         topic=state["topic"],
@@ -72,6 +73,7 @@ async def finalize_node(state, llm_service):
     )
     return {
         "checklist_items": checklist,
+        "portrait": portrait,
         "markdown_content": markdown,
         "is_complete": True,
         "current_questions": [],

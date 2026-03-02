@@ -7,7 +7,7 @@ import { ChecklistPreview } from "@/components/checklist-preview";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { downloadResults, getResults, getSummaryAudio } from "@/lib/api";
-import { ChecklistItem } from "@/lib/types";
+import { ChecklistItem, PortraitCard } from "@/lib/types";
 
 export default function ResultsPage() {
   const params = useParams<{ id: string }>();
@@ -16,6 +16,7 @@ export default function ResultsPage() {
 
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [roundSummaries, setRoundSummaries] = useState<string[]>([]);
+  const [portrait, setPortrait] = useState<PortraitCard | undefined>(undefined);
   const [isComplete, setIsComplete] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -93,10 +94,14 @@ export default function ResultsPage() {
         if (!cancelled) {
           setChecklist(res.checklist);
           setRoundSummaries(res.round_summaries);
+          setPortrait(res.portrait);
           setIsComplete(res.is_complete);
         }
       } catch {
-        if (!cancelled) setChecklist([]);
+        if (!cancelled) {
+          setChecklist([]);
+          setPortrait(undefined);
+        }
       }
     })();
 
@@ -131,6 +136,7 @@ export default function ResultsPage() {
             sessionId={sessionId}
             checklist={checklist}
             roundSummaries={roundSummaries}
+            portrait={portrait}
             onDownload={() => {
               window.open(downloadResults(sessionId), "_blank");
             }}

@@ -1,11 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ChecklistItem } from "@/lib/types";
+import { ChecklistItem, PortraitCard } from "@/lib/types";
 
 interface ChecklistPreviewProps {
   sessionId: string;
   checklist: ChecklistItem[];
   roundSummaries: string[];
+  portrait?: PortraitCard;
   onDownload: () => void;
 }
 
@@ -32,7 +33,7 @@ function groupByCategory(items: ChecklistItem[]) {
   }, {});
 }
 
-export function ChecklistPreview({ sessionId, checklist, roundSummaries, onDownload }: ChecklistPreviewProps) {
+export function ChecklistPreview({ sessionId, checklist, roundSummaries, portrait, onDownload }: ChecklistPreviewProps) {
   const grouped = groupByCategory(checklist);
   const categories = Object.keys(grouped);
 
@@ -105,6 +106,48 @@ export function ChecklistPreview({ sessionId, checklist, roundSummaries, onDownl
               {idx + 1}. {summary}
             </p>
           ))}
+        </Card>
+      ) : null}
+
+      {portrait ? (
+        <Card className="space-y-4 bg-[var(--card-2)]">
+          <h3 className="text-xl font-black uppercase tracking-[0.04em] sm:text-2xl">Карточка портрета</h3>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+              <p className="crt-kicker">Эмоциональная стабильность</p>
+              <p className="mt-2 text-3xl font-black">{portrait.emotional_stability}/10</p>
+            </div>
+            <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+              <p className="crt-kicker">Скрытое напряжение</p>
+              <p className="mt-2 text-3xl font-black">{portrait.hidden_tension}/10</p>
+            </div>
+            <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+              <p className="crt-kicker">Уверенность формулировок</p>
+              <p className="mt-2 text-3xl font-black">{portrait.confidence_proxy}/10</p>
+            </div>
+            <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+              <p className="crt-kicker">Темы-триггеры</p>
+              <p className="mt-2 text-2xl font-black">
+                {portrait.trigger_questions.length > 0
+                  ? portrait.trigger_questions.map((n) => `вопрос ${n}`).join(" и ")
+                  : "не выявлены"}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+            <p className="crt-kicker">Доминирующие эмоции</p>
+            <p className="mt-2 text-base font-bold">{portrait.dominant_emotions.join(", ") || "спокойствие"}</p>
+          </div>
+
+          <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+            <p className="crt-kicker">Рекомендация</p>
+            <p className="mt-2 text-base font-semibold leading-relaxed">{portrait.recommendation}</p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+              Это индикаторы речи и формулировок, а не медицинский или психологический диагноз.
+            </p>
+          </div>
         </Card>
       ) : null}
     </div>

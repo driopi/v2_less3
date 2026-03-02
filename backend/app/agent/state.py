@@ -1,6 +1,7 @@
-from typing import List, TypedDict
+from typing import List, Optional, TypedDict
 
 from app.models.checklist import ChecklistItem
+from app.models.portrait import PortraitCard
 from app.models.question import Question
 from app.models.session import Answer
 
@@ -17,5 +18,6 @@ class AgentState(TypedDict):
     round_summaries: List[str]
     round_summary: str
     checklist_items: List[ChecklistItem]
+    portrait: Optional[PortraitCard]
     markdown_content: str
     is_complete: bool

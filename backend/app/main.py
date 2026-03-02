@@ -9,6 +9,7 @@ from app.routers.health import router as health_router
 from app.routers.session import router as session_router
 from app.services.llm import LLMService
 from app.services.mcp import MCPToolProvider
+from app.services.portrait import PortraitService
 from app.services.transcription import TranscriptionService
 from app.services.tts import TTSService
 from app.storage.session_store import SessionStore
@@ -24,14 +25,16 @@ async def lifespan(app: FastAPI):
 
     mcp_provider = MCPToolProvider(settings)
     llm_service = LLMService(settings, mcp_provider=mcp_provider)
+    portrait_service = PortraitService()
     tts_service = TTSService(settings)
 
     app.state.settings = settings
     app.state.transcription_service = transcription_service
     app.state.llm_service = llm_service
+    app.state.portrait_service = portrait_service
     app.state.tts_service = tts_service
     app.state.mcp_provider = mcp_provider
-    app.state.graph_service = ChecklistGraphService(llm_service)
+    app.state.graph_service = ChecklistGraphService(llm_service, portrait_service=portrait_service)
     app.state.session_store = SessionStore()
 
     yield

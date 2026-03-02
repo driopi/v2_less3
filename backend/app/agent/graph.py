@@ -13,8 +13,9 @@ from app.agent.state import AgentState
 
 
 class ChecklistGraphService:
-    def __init__(self, llm_service):
+    def __init__(self, llm_service, portrait_service):
         self.llm_service = llm_service
+        self.portrait_service = portrait_service
         self._start_graph = self._build_start_graph()
         self._round_graph = self._build_round_graph()
 
@@ -39,7 +40,7 @@ class ChecklistGraphService:
             return await generate_next_questions_node(state, self.llm_service)
 
         async def _finalize(state):
-            return await finalize_node(state, self.llm_service)
+            return await finalize_node(state, self.llm_service, self.portrait_service)
 
         graph.add_node("analyze_round", _analyze)
         graph.add_node("generate_next_questions", _next)

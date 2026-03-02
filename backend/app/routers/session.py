@@ -45,6 +45,7 @@ async def start_session(payload: StartSessionRequest, request: Request):
         "round_summaries": [],
         "round_summary": "",
         "checklist_items": [],
+        "portrait": None,
         "markdown_content": "",
         "is_complete": False,
     }
@@ -167,6 +168,7 @@ async def submit_answers(
         "round_summaries": session.round_summaries,
         "round_summary": "",
         "checklist_items": session.checklist_items,
+        "portrait": session.portrait,
         "markdown_content": session.markdown_content,
         "is_complete": session.is_complete,
     }
@@ -185,6 +187,7 @@ async def submit_answers(
     session.all_answers = all_answers
     session.round_summaries = output.get("round_summaries", session.round_summaries)
     session.checklist_items = output.get("checklist_items", session.checklist_items)
+    session.portrait = output.get("portrait", session.portrait)
     session.markdown_content = output.get("markdown_content", session.markdown_content)
     session.is_complete = output.get("is_complete", False)
     store.update(session)
@@ -211,6 +214,7 @@ async def get_results(session_id: str, request: Request):
         checklist=session.checklist_items,
         markdown=session.markdown_content,
         round_summaries=session.round_summaries,
+        portrait=session.portrait,
     )
 
 

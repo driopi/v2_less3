@@ -62,6 +62,10 @@ def test_full_9_question_flow_and_results(client):
     assert results_payload["is_complete"] is True
     assert len(results_payload["checklist"]) >= 1
     assert "Чеклист созвона" in results_payload["markdown"]
+    assert results_payload["portrait"] is not None
+    assert 1 <= results_payload["portrait"]["emotional_stability"] <= 10
+    assert 1 <= results_payload["portrait"]["hidden_tension"] <= 10
+    assert isinstance(results_payload["portrait"]["trigger_questions"], list)
 
     download = client.get(f"/api/session/{session_id}/download")
     assert download.status_code == 200

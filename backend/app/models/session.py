@@ -3,6 +3,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from app.models.checklist import ChecklistItem
+from app.models.portrait import PortraitCard
 from app.models.question import Question
 
 
@@ -28,6 +29,7 @@ class SessionData(BaseModel):
     all_answers: List[Answer] = Field(default_factory=list)
     round_summaries: List[str] = Field(default_factory=list)
     checklist_items: List[ChecklistItem] = Field(default_factory=list)
+    portrait: Optional[PortraitCard] = None
     markdown_content: str = ""
     is_complete: bool = False
 
@@ -52,3 +54,4 @@ class SessionResultsResponse(BaseModel):
     checklist: List[ChecklistItem]
     markdown: str
     round_summaries: List[str]
+    portrait: Optional[PortraitCard] = None

@@ -82,6 +82,10 @@ class PreflightFlowTest(unittest.TestCase):
         self.assertTrue(results_payload["is_complete"])
         self.assertGreaterEqual(len(results_payload["checklist"]), 1)
         self.assertIn("Чеклист созвона", results_payload["markdown"])
+        self.assertIsNotNone(results_payload["portrait"])
+        self.assertGreaterEqual(results_payload["portrait"]["emotional_stability"], 1)
+        self.assertLessEqual(results_payload["portrait"]["emotional_stability"], 10)
+        self.assertIsInstance(results_payload["portrait"]["trigger_questions"], list)
 
         download = self.client.get(f"/api/session/{session_id}/download")
         self.assertEqual(download.status_code, 200)

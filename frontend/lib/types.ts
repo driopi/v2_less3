@@ -24,10 +24,28 @@ export interface ChecklistItem {
   notes?: string;
 }
 
+export interface PortraitSignal {
+  question_number: number;
+  tension: number;
+  uncertainty: number;
+  valence: number;
+}
+
+export interface PortraitCard {
+  emotional_stability: number;
+  hidden_tension: number;
+  confidence_proxy: number;
+  dominant_emotions: string[];
+  trigger_questions: number[];
+  recommendation: string;
+  signals: PortraitSignal[];
+}
+
 export interface SessionResultsResponse {
   session_id: string;
   is_complete: boolean;
   checklist: ChecklistItem[];
   markdown: string;
   round_summaries: string[];
+  portrait?: PortraitCard;
 }
