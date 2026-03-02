@@ -54,7 +54,11 @@ class TranscriptionService:
                 self._pipeline = self._get_pipeline(self.settings.whisper_model)
                 self._loaded = True
 
-            result = self._pipeline(str(wav_path))
+            generate_kwargs = {"task": "transcribe"}
+            if self.settings.whisper_language:
+                generate_kwargs["language"] = self.settings.whisper_language
+
+            result = self._pipeline(str(wav_path), generate_kwargs=generate_kwargs)
             return result["text"].strip()
         finally:
             if wav_path.exists():

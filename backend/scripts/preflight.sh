@@ -7,6 +7,7 @@ export WHISPER_MODE=mock
 export PRELOAD_WHISPER_ON_STARTUP=false
 export TTS_PROVIDER=mock
 export LLM_PROVIDER=mock
+export EMOTION_MODE=mock
 unset GEMINI_API_KEY
 unset ANTHROPIC_API_KEY
 unset HUGGINGFACE_API_KEY

@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
     mcp_provider = MCPToolProvider(settings)
     llm_service = LLMService(settings, mcp_provider=mcp_provider)
-    portrait_service = PortraitService()
+    portrait_service = PortraitService(settings)
     tts_service = TTSService(settings)
 
     app.state.settings = settings
@@ -49,6 +49,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-TTS-Source"],
 )
 
 app.include_router(health_router)

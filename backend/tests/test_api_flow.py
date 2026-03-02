@@ -66,6 +66,7 @@ def test_full_9_question_flow_and_results(client):
     assert 1 <= results_payload["portrait"]["emotional_stability"] <= 10
     assert 1 <= results_payload["portrait"]["hidden_tension"] <= 10
     assert isinstance(results_payload["portrait"]["trigger_questions"], list)
+    assert isinstance(results_payload["portrait"]["triggers"], list)
 
     download = client.get(f"/api/session/{session_id}/download")
     assert download.status_code == 200

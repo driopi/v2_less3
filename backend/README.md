@@ -16,6 +16,8 @@ app_port: 7860
 - Локальная транскрипция через `openai/whisper-small`
 - Озвучка итогов с легкой TTS-моделью (`facebook/mms-tts-rus`) через HF Inference API + mock fallback
 - Карточка речевого портрета (стабильность, скрытое напряжение, триггеры, рекомендация) по 9 транскриптам
+  - Использует HF emotion model: `seara/rubert-tiny2-russian-emotion-detection-ru-go-emotions`
+  - Работает в гибриде: HF-модель + эвристики (устойчиво на CPU free tier)
 - Превью транскрипции и финальная генерация Markdown
 - Опциональный MCP bridge для Tavily/Hugging Face tools
 - Preflight тесты без запуска реальной Whisper (`mock` режим)

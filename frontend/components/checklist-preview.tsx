@@ -129,11 +129,28 @@ export function ChecklistPreview({ sessionId, checklist, roundSummaries, portrai
             <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
               <p className="crt-kicker">Темы-триггеры</p>
               <p className="mt-2 text-2xl font-black">
-                {portrait.trigger_questions.length > 0
-                  ? portrait.trigger_questions.map((n) => `вопрос ${n}`).join(" и ")
-                  : "не выявлены"}
+                {portrait.triggers.length > 0 ? `${portrait.triggers.length} зоны` : "не выявлены"}
               </p>
             </div>
+          </div>
+
+          <div className="space-y-3 rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+            <p className="crt-kicker">Детализация триггеров</p>
+            {portrait.triggers.length === 0 ? (
+              <p className="text-base font-semibold">Существенных триггеров по ответам не обнаружено.</p>
+            ) : (
+              portrait.triggers.map((trigger) => (
+                <div key={`${trigger.question_number}-${trigger.score}`} className="rounded-md border-4 border-[var(--line)] bg-[var(--card-2)] p-3">
+                  <p className="text-sm font-black uppercase tracking-[0.06em]">
+                    Раунд {trigger.round_number}, вопрос {trigger.question_in_round}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold leading-relaxed">{trigger.question_text}</p>
+                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+                    {trigger.reason} • score {Math.round(trigger.score * 100) / 100}
+                  </p>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">

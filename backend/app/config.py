@@ -35,6 +35,7 @@ class Settings:
 
     whisper_model: str
     whisper_mode: str
+    whisper_language: Optional[str]
     preload_whisper_on_startup: bool
     max_audio_duration_seconds: int
 
@@ -49,6 +50,8 @@ class Settings:
     tts_model: str
     tts_timeout_seconds: int
     tts_max_chars: int
+    emotion_mode: str
+    emotion_model: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -61,6 +64,7 @@ class Settings:
             llm_model=os.getenv("LLM_MODEL", "gemini-2.5-flash"),
             whisper_model=os.getenv("WHISPER_MODEL", "openai/whisper-small"),
             whisper_mode=os.getenv("WHISPER_MODE", "local"),
+            whisper_language=os.getenv("WHISPER_LANGUAGE", "ru"),
             preload_whisper_on_startup=_env_bool("PRELOAD_WHISPER_ON_STARTUP", False),
             max_audio_duration_seconds=int(os.getenv("MAX_AUDIO_DURATION_SECONDS", "120")),
             enable_mcp_tools=_env_bool("ENABLE_MCP_TOOLS", False),
@@ -74,6 +78,8 @@ class Settings:
             tts_model=os.getenv("TTS_MODEL", "facebook/mms-tts-rus"),
             tts_timeout_seconds=int(os.getenv("TTS_TIMEOUT_SECONDS", "45")),
             tts_max_chars=int(os.getenv("TTS_MAX_CHARS", "900")),
+            emotion_mode=os.getenv("EMOTION_MODE", "local"),
+            emotion_model=os.getenv("EMOTION_MODEL", "seara/rubert-tiny2-russian-emotion-detection-ru-go-emotions"),
         )
 
     @staticmethod

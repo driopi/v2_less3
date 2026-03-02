@@ -26,9 +26,21 @@ export interface ChecklistItem {
 
 export interface PortraitSignal {
   question_number: number;
+  round_number: number;
+  question_in_round: number;
+  question_text: string;
   tension: number;
   uncertainty: number;
   valence: number;
+}
+
+export interface PortraitTrigger {
+  question_number: number;
+  round_number: number;
+  question_in_round: number;
+  question_text: string;
+  reason: string;
+  score: number;
 }
 
 export interface PortraitCard {
@@ -37,6 +49,7 @@ export interface PortraitCard {
   confidence_proxy: number;
   dominant_emotions: string[];
   trigger_questions: number[];
+  triggers: PortraitTrigger[];
   recommendation: string;
   signals: PortraitSignal[];
 }

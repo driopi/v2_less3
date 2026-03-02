@@ -159,7 +159,9 @@ export default function ResultsPage() {
                     setIsAudioLoading(true);
                     try {
                       const { blob, source } = await getSummaryAudio(sessionId);
-                      if (source === "mock") {
+                      if (source !== "huggingface") {
+                        setAudioUrl(null);
+                        setNarrationMode("browser");
                         playBrowserNarration();
                         return;
                       }
@@ -204,7 +206,7 @@ export default function ResultsPage() {
 
             {narrationMode === "browser" ? (
               <p className="text-sm font-semibold text-[var(--muted)]">
-                Используется встроенная озвучка браузера (fallback), так как серверный TTS недоступен.
+                Используется встроенная озвучка браузера (fallback), так как серверный TTS недоступен или не подтвердил источник.
               </p>
             ) : null}
 
