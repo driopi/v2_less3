@@ -11,6 +11,7 @@ from app.models.tooling import ToolInsight
 class StartSessionRequest(BaseModel):
     goal: str = Field(default="Заполнить чеклист созвона с клиентом")
     topic: str = Field(default="Бриф по проекту")
+    mock_mode: bool = Field(default=False)
 
 
 class Answer(BaseModel):
@@ -26,6 +27,7 @@ class SessionData(BaseModel):
     topic: str
     current_round: int = 1
     max_rounds: int = 3
+    mock_mode: bool = False
     current_questions: List[Question] = Field(default_factory=list)
     all_answers: List[Answer] = Field(default_factory=list)
     round_summaries: List[str] = Field(default_factory=list)
@@ -39,6 +41,7 @@ class SessionData(BaseModel):
 class SessionStartResponse(BaseModel):
     session_id: str
     round: int
+    mock_mode: bool = False
     questions: List[Question]
 
 
@@ -48,6 +51,19 @@ class SessionSubmitResponse(BaseModel):
     round_summary: str
     is_complete: bool
     checklist_preview: Optional[str] = None
+
+
+class MockAnswerPreview(BaseModel):
+    question_id: str
+    question_text: str
+    transcript: str
+
+
+class MockAnswersResponse(BaseModel):
+    session_id: str
+    round: int
+    answers: List[MockAnswerPreview]
+    logs: List[str] = Field(default_factory=list)
 
 
 class SessionResultsResponse(BaseModel):

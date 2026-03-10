@@ -11,6 +11,7 @@ export default function HomePage() {
   const router = useRouter();
   const [goal, setGoal] = useState("Заполнить чеклист с клиентом");
   const [topic, setTopic] = useState("Турнир по теннису");
+  const [mockMode, setMockMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +57,29 @@ export default function HomePage() {
               <input className="crt-input" value={topic} onChange={(e) => setTopic(e.target.value)} />
             </label>
 
+            <label className="flex items-center justify-between gap-4 rounded-lg border-4 border-[var(--line)] bg-[var(--card)] px-4 py-3">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.07em]">Mock Data Mode</p>
+                <p className="mt-1 text-xs font-semibold text-[var(--muted)]">
+                  Автогенерация транскриптов и быстрый прогон без микрофона
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-pressed={mockMode}
+                onClick={() => setMockMode((prev) => !prev)}
+                className={`relative h-10 w-20 rounded-full border-4 border-[var(--line)] transition ${
+                  mockMode ? "bg-[#8fb07c]" : "bg-[#9aab92]"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-7 w-7 rounded-full border-4 border-[var(--line)] bg-[var(--card-2)] transition ${
+                    mockMode ? "left-10" : "left-1"
+                  }`}
+                />
+              </button>
+            </label>
+
             <Button
               className="w-full"
               disabled={loading}
@@ -63,7 +87,7 @@ export default function HomePage() {
                 try {
                   setLoading(true);
                   setError(null);
-                  const started = await startSession(goal, topic);
+                  const started = await startSession(goal, topic, mockMode);
                   router.push(`/session/${started.session_id}`);
                 } catch {
                   setError("Не удалось создать сессию. Проверьте backend URL.");

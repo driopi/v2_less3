@@ -1,4 +1,5 @@
 import {
+  MockAnswersResponse,
   SessionSubmitAcceptedResponse,
   SessionResultsResponse,
   SessionStartResponse,
@@ -30,13 +31,13 @@ async function extractErrorMessage(res: Response, fallback: string): Promise<str
   return fallback;
 }
 
-export async function startSession(goal: string, topic: string): Promise<SessionStartResponse> {
+export async function startSession(goal: string, topic: string, mockMode = false): Promise<SessionStartResponse> {
   let res: Response;
   try {
     res = await fetchWithTimeout(`${API_URL}/api/session/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal, topic })
+      body: JSON.stringify({ goal, topic, mock_mode: mockMode })
     }, 30000);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
@@ -108,6 +109,47 @@ export async function submitRound(
     throw err;
   }
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to submit answers"));
+  return res.json();
+}
+
+export async function submitRoundMock(
+  sessionId: string,
+  questionIds: string[],
+  transcripts: string[]
+): Promise<SessionSubmitAcceptedResponse> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_URL}/api/session/${sessionId}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question_ids: questionIds.join(","),
+        transcripts
+      })
+    }, 30000);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Превышено время ожидания запуска обработки.");
+    }
+    throw err;
+  }
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to submit mock answers"));
+  return res.json();
+}
+
+export async function fetchMockAnswers(sessionId: string): Promise<MockAnswersResponse> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_URL}/api/session/${sessionId}/mock-answers`, {
+      method: "POST"
+    }, 30000);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Превышено время ожидания генерации mock-ответов.");
+    }
+    throw err;
+  }
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to generate mock answers"));
   return res.json();
 }
 

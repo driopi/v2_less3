@@ -6,6 +6,7 @@ export interface Question {
 export interface SessionStartResponse {
   session_id: string;
   round: number;
+  mock_mode: boolean;
   questions: Question[];
 }
 
@@ -15,6 +16,19 @@ export interface SessionSubmitResponse {
   round_summary: string;
   is_complete: boolean;
   checklist_preview?: string;
+}
+
+export interface MockAnswerPreview {
+  question_id: string;
+  question_text: string;
+  transcript: string;
+}
+
+export interface MockAnswersResponse {
+  session_id: string;
+  round: number;
+  answers: MockAnswerPreview[];
+  logs: string[];
 }
 
 export interface SessionSubmitAcceptedResponse {

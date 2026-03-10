@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { JobProgressPanel } from "@/components/job-progress-panel";
+import { MockLogEntry, MockLogPanel } from "@/components/mock-log-panel";
 import { QuestionCard } from "@/components/question-card";
 import { RoundIndicator } from "@/components/round-indicator";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getSession, getSubmitJobStatus, submitRound, transcribeAudio } from "@/lib/api";
+import { fetchMockAnswers, getSession, getSubmitJobStatus, submitRound, submitRoundMock, transcribeAudio } from "@/lib/api";
 import { Question, SubmitJobStatusResponse } from "@/lib/types";
 
 interface AnswerState {
@@ -17,20 +18,45 @@ interface AnswerState {
   confirmed: boolean;
 }
 
+const timestamp = () =>
+  new Date().toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+
 export default function SessionPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const sessionId = params.id;
 
   const [round, setRound] = useState(1);
+  const [mockMode, setMockMode] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [roundSummaries, setRoundSummaries] = useState<string[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSubmittingRound, setIsSubmittingRound] = useState(false);
+  const [isMockHydrating, setIsMockHydrating] = useState(false);
   const [submitJob, setSubmitJob] = useState<SubmitJobStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<MockLogEntry[]>([]);
+  const [mockPreparedRound, setMockPreparedRound] = useState<number | null>(null);
+
   const pollTimerRef = useRef<number | null>(null);
+  const lastJobLogRef = useRef<string>("");
+
+  const addLog = (source: MockLogEntry["source"], message: string) => {
+    setLogs((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        at: timestamp(),
+        source,
+        message
+      }
+    ]);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +65,13 @@ export default function SessionPage() {
         const data = await getSession(sessionId);
         if (!cancelled) {
           setRound(data.round);
+          setMockMode(data.mock_mode);
           setQuestions(data.questions);
+          if (data.mock_mode) {
+            addLog("ui", "Сессия загружена в mock режиме");
+          } else {
+            addLog("ui", "Сессия загружена в обычном режиме");
+          }
         }
       } catch {
         if (!cancelled) setError("Не удалось загрузить сессию");
@@ -62,6 +94,13 @@ export default function SessionPage() {
       const status = await getSubmitJobStatus(jobId);
       setSubmitJob(status);
 
+      const marker = `${status.status}|${status.current_step || ""}|${status.progress_pct}`;
+      if (marker !== lastJobLogRef.current) {
+        lastJobLogRef.current = marker;
+        const stepText = status.current_step ? `, шаг: ${status.current_step}` : "";
+        addLog("job", `Статус ${status.status}${stepText}, прогресс ${status.progress_pct}%`);
+      }
+
       if (status.status === "failed") {
         setError(status.error || "Ошибка обработки раунда");
         setIsSubmittingRound(false);
@@ -80,9 +119,11 @@ export default function SessionPage() {
 
         if (result.round_summary) {
           setRoundSummaries((prev) => [...prev, result.round_summary]);
+          addLog("job", `Раунд завершен: ${result.round_summary}`);
         }
 
         if (result.is_complete) {
+          addLog("job", "Интервью завершено, переход на страницу результатов");
           setIsSubmittingRound(false);
           stopPolling();
           router.push(`/results/${sessionId}`);
@@ -92,9 +133,11 @@ export default function SessionPage() {
         setRound(result.round);
         setQuestions(result.questions);
         setAnswers({});
+        setMockPreparedRound(null);
         setSubmitJob(null);
         setIsSubmittingRound(false);
         stopPolling();
+        addLog("job", `Переход к раунду ${result.round}`);
         return;
       }
 
@@ -115,8 +158,48 @@ export default function SessionPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!mockMode) return;
+    if (questions.length !== 3) return;
+    if (isSubmittingRound || isMockHydrating) return;
+    if (mockPreparedRound === round) return;
+
+    let cancelled = false;
+    (async () => {
+      setIsMockHydrating(true);
+      setError(null);
+      addLog("mock", `Запрос mock-ответов для раунда ${round}`);
+      try {
+        const generated = await fetchMockAnswers(sessionId);
+        if (cancelled) return;
+        const mapped: Record<string, AnswerState> = {};
+        generated.answers.forEach((item) => {
+          mapped[item.question_id] = {
+            transcript: item.transcript,
+            confirmed: true
+          };
+        });
+        setAnswers(mapped);
+        setMockPreparedRound(round);
+        generated.logs.forEach((line) => addLog("mock", line));
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Не удалось получить mock-ответы");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsMockHydrating(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mockMode, questions, round, isSubmittingRound, isMockHydrating, mockPreparedRound, sessionId]);
+
   const allConfirmed = useMemo(
-    () => questions.length === 3 && questions.every((q) => Boolean(answers[q.id]?.blob) && answers[q.id]?.confirmed),
+    () => questions.length === 3 && questions.every((q) => Boolean(answers[q.id]?.transcript) && answers[q.id]?.confirmed),
     [answers, questions]
   );
 
@@ -126,6 +209,15 @@ export default function SessionPage() {
         <div className="space-y-5 rounded-[28px] border-4 border-[var(--line)] bg-[var(--card)] p-4 sm:p-6">
           <RoundIndicator currentRound={round} totalRounds={3} roundSummaries={roundSummaries} />
 
+          {mockMode ? (
+            <Card className="space-y-2 bg-[var(--card-2)]">
+              <p className="crt-kicker">Mock Data Mode</p>
+              <p className="text-sm font-semibold leading-relaxed sm:text-base">
+                Микрофон не нужен: ответы генерируются автоматически и сразу подставляются как транскрипты.
+              </p>
+            </Card>
+          ) : null}
+
           <section className="grid gap-4">
             {questions.map((question, idx) => (
               <QuestionCard
@@ -133,8 +225,9 @@ export default function SessionPage() {
                 question={question}
                 index={idx}
                 transcript={answers[question.id]?.transcript}
-                isAnswered={Boolean(answers[question.id]?.blob)}
+                isAnswered={Boolean(answers[question.id]?.transcript)}
                 isConfirmed={Boolean(answers[question.id]?.confirmed)}
+                hideRecorder={mockMode}
                 onAnswer={async (blob) => {
                   setIsTranscribing(true);
                   setError(null);
@@ -148,6 +241,7 @@ export default function SessionPage() {
                         confirmed: false
                       }
                     }));
+                    addLog("ui", `Получена транскрипция для вопроса ${idx + 1}`);
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Не удалось транскрибировать аудио");
                   } finally {
@@ -176,6 +270,8 @@ export default function SessionPage() {
             />
           ) : null}
 
+          {mockMode ? <MockLogPanel entries={logs} /> : null}
+
           <Card className="space-y-4 bg-[var(--card-2)]">
             <p className="text-sm font-semibold leading-relaxed sm:text-base">
               Когда все 3 ответа подтверждены, отправьте раунд. Пока идет обработка, можно оставаться на странице: прогресс, ETA и этапы обновляются автоматически.
@@ -183,20 +279,34 @@ export default function SessionPage() {
             <div className="flex flex-wrap gap-3">
               <Button
                 className="w-full sm:w-auto"
-                disabled={!allConfirmed || isTranscribing || isSubmittingRound}
+                disabled={!allConfirmed || isTranscribing || isSubmittingRound || isMockHydrating}
                 onClick={async () => {
                   setIsSubmittingRound(true);
                   setSubmitJob(null);
                   setError(null);
+                  addLog("ui", `Отправка ответов раунда ${round}`);
                   try {
                     const questionIds = questions.map((q) => q.id);
-                    const blobs = questionIds.map((id) => answers[id]?.blob).filter((item): item is Blob => item instanceof Blob);
-
-                    if (blobs.length !== 3) {
-                      throw new Error("three answers required");
+                    if (!mockMode) {
+                      const blobCount = questionIds
+                        .map((id) => answers[id]?.blob)
+                        .filter((item): item is Blob => item instanceof Blob).length;
+                      if (blobCount !== 3) {
+                        throw new Error("Для обычного режима нужны 3 аудио-ответа.");
+                      }
                     }
+                    const accepted = mockMode
+                      ? await submitRoundMock(
+                          sessionId,
+                          questionIds,
+                          questionIds.map((id) => (answers[id]?.transcript || "").trim())
+                        )
+                      : await submitRound(
+                          sessionId,
+                          questionIds,
+                          questionIds.map((id) => answers[id]?.blob).filter((item): item is Blob => item instanceof Blob)
+                        );
 
-                    const accepted = await submitRound(sessionId, questionIds, blobs);
                     const initialStatus: SubmitJobStatusResponse = {
                       job_id: accepted.job_id,
                       session_id: sessionId,
@@ -207,6 +317,7 @@ export default function SessionPage() {
                       progress_pct: accepted.progress_pct
                     };
                     setSubmitJob(initialStatus);
+                    addLog("job", `Запущена фоновая обработка: job ${accepted.job_id.slice(0, 8)}`);
                     await pollSubmitJob(accepted.job_id);
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Не удалось отправить ответы");

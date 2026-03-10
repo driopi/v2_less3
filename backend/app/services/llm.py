@@ -171,6 +171,38 @@ class LLMService:
 
         return response_text
 
+    async def generate_mock_answers(
+        self,
+        *,
+        goal: str,
+        topic: str,
+        round_number: int,
+        questions: List[str],
+    ) -> list[str]:
+        question_dump = "\n".join([f"{idx + 1}. {q}" for idx, q in enumerate(questions)])
+        prompt = (
+            "Ты играешь роль респондента интервью. "
+            "Сгенерируй реалистичные короткие ответы на каждый вопрос (1-3 предложения). "
+            "Верни строго JSON-массив строк той же длины, что и список вопросов, без комментариев.\n"
+            f"Цель интервью: {goal}\n"
+            f"Тема: {topic}\n"
+            f"Раунд: {round_number}\n"
+            f"Вопросы:\n{question_dump}\n"
+        )
+        response_text = await self._invoke_text(prompt)
+        if response_text:
+            parsed = self._parse_questions(response_text)
+            if len(parsed) >= len(questions):
+                return parsed[: len(questions)]
+
+        fallback = []
+        for idx, question in enumerate(questions, start=1):
+            fallback.append(
+                f"По вопросу {idx}: для темы '{topic}' приоритетом считаем измеримый результат и реалистичный план выполнения. "
+                f"Уточним детали после пилота. ({self._shorten(question, limit=80)})"
+            )
+        return fallback[: len(questions)]
+
     def ensure_distinct_round_summary(
         self,
         round_number: int,

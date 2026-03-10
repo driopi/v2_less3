@@ -11,11 +11,21 @@ interface QuestionCardProps {
   transcript?: string;
   isAnswered: boolean;
   isConfirmed: boolean;
+  hideRecorder?: boolean;
   onAnswer: (audioBlob: Blob) => Promise<void>;
   onConfirm: () => void;
 }
 
-export function QuestionCard({ question, index, transcript, isAnswered, isConfirmed, onAnswer, onConfirm }: QuestionCardProps) {
+export function QuestionCard({
+  question,
+  index,
+  transcript,
+  isAnswered,
+  isConfirmed,
+  hideRecorder = false,
+  onAnswer,
+  onConfirm
+}: QuestionCardProps) {
   return (
     <Card className="space-y-5 bg-[var(--card-2)]">
       <div className="space-y-3">
@@ -25,7 +35,14 @@ export function QuestionCard({ question, index, transcript, isAnswered, isConfir
         <h3 className="text-2xl font-black leading-tight sm:text-3xl">{question.text}</h3>
       </div>
 
-      <AudioRecorder questionId={question.id} onRecordingComplete={onAnswer} />
+      {hideRecorder ? (
+        <div className="rounded-lg border-4 border-[var(--line)] bg-[var(--card)] px-4 py-3">
+          <p className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Mock режим: запись отключена</p>
+          <p className="mt-2 text-sm font-semibold">Ответ будет сгенерирован автоматически и подставлен как транскрипт.</p>
+        </div>
+      ) : (
+        <AudioRecorder questionId={question.id} onRecordingComplete={onAnswer} />
+      )}
 
       {isAnswered ? (
         <div className="space-y-3 rounded-lg border-4 border-[var(--line)] bg-[var(--card)] p-4">

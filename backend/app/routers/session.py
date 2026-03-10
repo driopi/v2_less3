@@ -12,6 +12,8 @@ from app.models.job import JobResult, JobStatusResponse, SessionSubmitAcceptedRe
 from app.models.question import Question
 from app.models.session import (
     Answer,
+    MockAnswerPreview,
+    MockAnswersResponse,
     SessionData,
     SessionResultsResponse,
     SessionStartResponse,
@@ -48,6 +50,7 @@ async def _process_submit_job(
     session_id: str,
     question_id_list: list[str],
     files_payload: list[tuple[bytes, str]],
+    transcripts_payload: list[str] | None,
     app,
 ) -> None:
     store = app.state.session_store
@@ -67,12 +70,15 @@ async def _process_submit_job(
         current_question_map = {q.id: q.text for q in session.current_questions}
         round_answers: list[Answer] = []
 
-        for idx, (audio_bytes, filename) in enumerate(files_payload):
+        for idx, qid in enumerate(question_id_list):
             step_key = f"transcribe_{idx + 1}"
             job_store.mark_step_running(job_id, step_key)
-            transcript = await transcription_service.transcribe(audio_bytes, filename=filename)
+            if transcripts_payload is not None:
+                transcript = transcripts_payload[idx].strip()
+            else:
+                audio_bytes, filename = files_payload[idx]
+                transcript = await transcription_service.transcribe(audio_bytes, filename=filename)
             job_store.mark_step_completed(job_id, step_key)
-            qid = question_id_list[idx]
             round_answers.append(
                 Answer(
                     question_id=qid,
@@ -227,6 +233,7 @@ async def start_session(payload: StartSessionRequest, request: Request):
         topic=payload.topic,
         current_round=output["current_round"],
         max_rounds=3,
+        mock_mode=payload.mock_mode,
         current_questions=output["current_questions"],
     )
     session_store.create(session)
@@ -234,6 +241,7 @@ async def start_session(payload: StartSessionRequest, request: Request):
     return SessionStartResponse(
         session_id=session_id,
         round=session.current_round,
+        mock_mode=session.mock_mode,
         questions=session.current_questions,
     )
 
@@ -247,7 +255,57 @@ async def get_session(session_id: str, request: Request):
     return SessionStartResponse(
         session_id=session.session_id,
         round=session.current_round,
+        mock_mode=session.mock_mode,
         questions=session.current_questions,
+    )
+
+
+@router.post("/{session_id}/mock-answers", response_model=MockAnswersResponse)
+async def generate_mock_answers(session_id: str, request: Request):
+    store = request.app.state.session_store
+    llm_service = request.app.state.llm_service
+
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.is_complete:
+        raise HTTPException(status_code=400, detail="Session already completed")
+    if not session.mock_mode:
+        raise HTTPException(status_code=400, detail="Session is not in mock mode")
+
+    questions = session.current_questions
+    if len(questions) != 3:
+        raise HTTPException(status_code=400, detail="Expected exactly 3 active questions")
+
+    question_texts = [q.text for q in questions]
+    transcripts = await llm_service.generate_mock_answers(
+        goal=session.goal,
+        topic=session.topic,
+        round_number=session.current_round,
+        questions=question_texts,
+    )
+    if len(transcripts) < 3:
+        transcripts = [
+            *transcripts,
+            *["Нужны дополнительные вводные по этому пункту." for _ in range(3 - len(transcripts))],
+        ]
+
+    logs = [
+        "mock_mode=true: аудио не требуется, ответы сгенерированы автоматически",
+        f"Раунд {session.current_round}: создано {len(transcripts[:3])} транскриптов",
+    ]
+    return MockAnswersResponse(
+        session_id=session.session_id,
+        round=session.current_round,
+        answers=[
+            MockAnswerPreview(
+                question_id=q.id,
+                question_text=q.text,
+                transcript=transcripts[idx].strip(),
+            )
+            for idx, q in enumerate(questions[:3])
+        ],
+        logs=logs,
     )
 
 
@@ -290,6 +348,7 @@ async def submit_answers(
         raise HTTPException(status_code=400, detail="Session already completed")
 
     content_type = request.headers.get("content-type", "")
+    transcripts_payload: list[str] | None = None
     if content_type.startswith("multipart/form-data"):
         form = await request.form()
         raw_question_ids = str(form.get("question_ids", ""))
@@ -302,11 +361,23 @@ async def submit_answers(
         payload = await request.json()
         raw_question_ids = str(payload.get("question_ids", ""))
         encoded_files = payload.get("audio_base64_files", [])
-        files_payload = [(_decode_base64_audio(encoded), f"answer-{idx + 1}.webm") for idx, encoded in enumerate(encoded_files)]
+        transcripts = payload.get("transcripts", [])
+        if transcripts:
+            if not session.mock_mode:
+                raise HTTPException(status_code=400, detail="transcripts mode is allowed only for mock_mode sessions")
+            transcripts_payload = [str(item).strip() for item in transcripts]
+            files_payload = []
+        else:
+            files_payload = [(_decode_base64_audio(encoded), f"answer-{idx + 1}.webm") for idx, encoded in enumerate(encoded_files)]
 
     question_id_list = [item.strip() for item in raw_question_ids.split(",") if item.strip()]
-    if len(files_payload) != 3 or len(question_id_list) != 3:
-        raise HTTPException(status_code=422, detail="Expected 3 audio files and 3 question IDs")
+    if len(question_id_list) != 3:
+        raise HTTPException(status_code=422, detail="Expected 3 question IDs")
+    if transcripts_payload is not None:
+        if len(transcripts_payload) != 3:
+            raise HTTPException(status_code=422, detail="Expected 3 transcripts in mock mode")
+    elif len(files_payload) != 3:
+        raise HTTPException(status_code=422, detail="Expected 3 audio files")
 
     job_id = str(uuid4())
     record = job_store.create(
@@ -321,6 +392,7 @@ async def submit_answers(
             session_id=session_id,
             question_id_list=question_id_list,
             files_payload=files_payload,
+            transcripts_payload=transcripts_payload,
             app=request.app,
         )
     )
