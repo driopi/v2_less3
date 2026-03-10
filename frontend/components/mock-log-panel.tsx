@@ -3,27 +3,23 @@ import { Card } from "@/components/ui/card";
 export interface MockLogEntry {
   id: string;
   at: string;
-  source: "ui" | "mock" | "job";
+  source: string;
   message: string;
 }
 
 interface MockLogPanelProps {
   entries: MockLogEntry[];
+  title?: string;
+  kicker?: string;
 }
 
-const sourceLabel: Record<MockLogEntry["source"], string> = {
-  ui: "UI",
-  mock: "MOCK",
-  job: "JOB"
-};
-
-export function MockLogPanel({ entries }: MockLogPanelProps) {
+export function MockLogPanel({ entries, title = "Логи mock-режима", kicker = "Debug Console" }: MockLogPanelProps) {
   return (
     <Card className="space-y-3 bg-[var(--card-2)]">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="crt-kicker">Debug Console</p>
-          <h3 className="text-xl font-black uppercase tracking-[0.04em] sm:text-2xl">Логи mock-режима</h3>
+          <p className="crt-kicker">{kicker}</p>
+          <h3 className="text-xl font-black uppercase tracking-[0.04em] sm:text-2xl">{title}</h3>
         </div>
         <p className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] px-3 py-2 text-xs font-black uppercase tracking-[0.08em]">
           {entries.length} событий
@@ -35,7 +31,7 @@ export function MockLogPanel({ entries }: MockLogPanelProps) {
         {entries.map((entry) => (
           <div key={entry.id} className="rounded-md border-4 border-[var(--line)] bg-[var(--card-2)] px-3 py-2">
             <p className="text-xs font-black uppercase tracking-[0.08em] text-[var(--muted)]">
-              [{entry.at}] {sourceLabel[entry.source]}
+              [{entry.at}] {entry.source.toUpperCase()}
             </p>
             <p className="mt-1 text-sm font-semibold leading-relaxed sm:text-base">{entry.message}</p>
           </div>

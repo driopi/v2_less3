@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -15,6 +16,7 @@ from app.models.session import (
     MockAnswerPreview,
     MockAnswersResponse,
     SessionData,
+    SessionLogEntry,
     SessionResultsResponse,
     SessionStartResponse,
     StartSessionRequest,
@@ -42,6 +44,22 @@ def _job_steps_for_round(current_round: int, max_rounds: int) -> list[str]:
 
 def _to_questions(texts: list[str]) -> list[Question]:
     return [Question(id=str(uuid4()), text=text) for text in texts[:3]]
+
+
+def _now_hms_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%H:%M:%S")
+
+
+def _append_session_log(session: SessionData, source: str, message: str) -> None:
+    session.logs.append(SessionLogEntry(at=_now_hms_utc(), source=source, message=message))
+
+
+def _mock_initial_question_texts() -> list[str]:
+    return [
+        "Какую главную цель вы хотите достичь по итогам интервью?",
+        "Какие ограничения по срокам, бюджету и ресурсам критичны на старте?",
+        "Какие ключевые риски вы видите сейчас и как планируете их снижать?",
+    ]
 
 
 async def _process_submit_job(
@@ -89,6 +107,7 @@ async def _process_submit_job(
             )
 
         all_answers = [*session.all_answers, *round_answers]
+        _append_session_log(session, "transcribe", f"Раунд {session.current_round}: получено 3 ответа")
 
         job_store.mark_step_running(job_id, "analyze_round")
         summary_candidate = await llm_service.summarize_round(
@@ -102,6 +121,7 @@ async def _process_submit_job(
             candidate=summary_candidate,
         )
         round_summaries = [*session.round_summaries, round_summary]
+        _append_session_log(session, "llm", f"Раунд {session.current_round}: сформирован summary")
         job_store.mark_step_completed(job_id, "analyze_round")
 
         target = "next_questions" if session.current_round < session.max_rounds else "final_checklist"
@@ -114,6 +134,7 @@ async def _process_submit_job(
             latest_round_answers=round_answers,
             target=target,
         )
+        _append_session_log(session, "tools", f"План инструментов: {', '.join(planned_tools)}")
         job_store.mark_step_completed(job_id, "tool_planning")
 
         job_store.mark_step_running(job_id, "tool_execution")
@@ -123,6 +144,12 @@ async def _process_submit_job(
             all_answers=all_answers,
         )
         tool_context = llm_service.render_tool_context(tool_insights)
+        for insight in tool_insights:
+            _append_session_log(
+                session,
+                "tools",
+                f"{insight.tool_name}: {insight.summary}",
+            )
         job_store.mark_step_completed(job_id, "tool_execution")
 
         if session.current_round < session.max_rounds:
@@ -137,6 +164,11 @@ async def _process_submit_job(
                 tool_context=tool_context,
             )
             next_questions = _to_questions(next_questions_text)
+            _append_session_log(
+                session,
+                "llm",
+                f"Раунд {session.current_round}: сгенерированы вопросы раунда {next_round}",
+            )
             job_store.mark_step_completed(job_id, "generate_next_questions")
 
             session.current_round = next_round
@@ -168,6 +200,7 @@ async def _process_submit_job(
             tool_context=tool_context,
         )
         portrait = portrait_service.analyze(all_answers)
+        _append_session_log(session, "llm", "Сформирован финальный чеклист и карточка портрета")
         all_tool_insights = [*session.tool_insights, *tool_insights]
         markdown = build_markdown(
             session_id=session.session_id,
@@ -205,43 +238,57 @@ async def _process_submit_job(
 @router.post("/start", response_model=SessionStartResponse)
 async def start_session(payload: StartSessionRequest, request: Request):
     session_id = str(uuid4())
-    graph_service = request.app.state.graph_service
     session_store = request.app.state.session_store
+    settings = request.app.state.settings
 
-    initial_state: AgentState = {
-        "session_id": session_id,
-        "goal": payload.goal,
-        "topic": payload.topic,
-        "current_round": 1,
-        "max_rounds": 3,
-        "current_questions": [],
-        "all_answers": [],
-        "latest_round_answers": [],
-        "round_summaries": [],
-        "round_summary": "",
-        "checklist_items": [],
-        "tool_insights": [],
-        "portrait": None,
-        "markdown_content": "",
-        "is_complete": False,
-    }
+    if payload.mock_mode:
+        current_questions = _to_questions(_mock_initial_question_texts())
+    else:
+        graph_service = request.app.state.graph_service
+        initial_state: AgentState = {
+            "session_id": session_id,
+            "goal": payload.goal,
+            "topic": payload.topic,
+            "current_round": 1,
+            "max_rounds": 3,
+            "current_questions": [],
+            "all_answers": [],
+            "latest_round_answers": [],
+            "round_summaries": [],
+            "round_summary": "",
+            "checklist_items": [],
+            "tool_insights": [],
+            "portrait": None,
+            "markdown_content": "",
+            "is_complete": False,
+        }
+        output = await graph_service.start(initial_state)
+        current_questions = output["current_questions"]
 
-    output = await graph_service.start(initial_state)
     session = SessionData(
         session_id=session_id,
         goal=payload.goal,
         topic=payload.topic,
-        current_round=output["current_round"],
+        current_round=1,
         max_rounds=3,
         mock_mode=payload.mock_mode,
-        current_questions=output["current_questions"],
+        current_questions=current_questions,
     )
+    if payload.mock_mode:
+        _append_session_log(session, "system", "Сессия запущена в mock_mode=true. Раунд 1 использует фиксированные вопросы.")
+    else:
+        _append_session_log(
+            session,
+            "system",
+            f"Сессия запущена в обычном режиме. Генерация вопросов: {settings.llm_provider}/{settings.llm_model}",
+        )
     session_store.create(session)
 
     return SessionStartResponse(
         session_id=session_id,
         round=session.current_round,
         mock_mode=session.mock_mode,
+        logs=session.logs,
         questions=session.current_questions,
     )
 
@@ -256,6 +303,7 @@ async def get_session(session_id: str, request: Request):
         session_id=session.session_id,
         round=session.current_round,
         mock_mode=session.mock_mode,
+        logs=session.logs,
         questions=session.current_questions,
     )
 
@@ -278,7 +326,7 @@ async def generate_mock_answers(session_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Expected exactly 3 active questions")
 
     question_texts = [q.text for q in questions]
-    transcripts = await llm_service.generate_mock_answers(
+    transcripts, source = await llm_service.generate_mock_answers(
         goal=session.goal,
         topic=session.topic,
         round_number=session.current_round,
@@ -292,8 +340,15 @@ async def generate_mock_answers(session_id: str, request: Request):
 
     logs = [
         "mock_mode=true: аудио не требуется, ответы сгенерированы автоматически",
+        f"Источник генерации ответов: {source}",
         f"Раунд {session.current_round}: создано {len(transcripts[:3])} транскриптов",
     ]
+    _append_session_log(
+        session,
+        "mock",
+        f"Раунд {session.current_round}: сгенерированы 3 mock-ответа (source={source})",
+    )
+    store.update(session)
     return MockAnswersResponse(
         session_id=session.session_id,
         round=session.current_round,
@@ -428,6 +483,7 @@ async def get_results(session_id: str, request: Request):
         is_complete=session.is_complete,
         checklist=session.checklist_items,
         tool_insights=session.tool_insights,
+        logs=session.logs,
         markdown=session.markdown_content,
         round_summaries=session.round_summaries,
         portrait=session.portrait,

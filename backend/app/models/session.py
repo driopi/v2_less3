@@ -30,6 +30,7 @@ class SessionData(BaseModel):
     mock_mode: bool = False
     current_questions: List[Question] = Field(default_factory=list)
     all_answers: List[Answer] = Field(default_factory=list)
+    logs: List["SessionLogEntry"] = Field(default_factory=list)
     round_summaries: List[str] = Field(default_factory=list)
     checklist_items: List[ChecklistItem] = Field(default_factory=list)
     tool_insights: List[ToolInsight] = Field(default_factory=list)
@@ -42,6 +43,7 @@ class SessionStartResponse(BaseModel):
     session_id: str
     round: int
     mock_mode: bool = False
+    logs: List["SessionLogEntry"] = Field(default_factory=list)
     questions: List[Question]
 
 
@@ -66,11 +68,18 @@ class MockAnswersResponse(BaseModel):
     logs: List[str] = Field(default_factory=list)
 
 
+class SessionLogEntry(BaseModel):
+    at: str
+    source: str
+    message: str
+
+
 class SessionResultsResponse(BaseModel):
     session_id: str
     is_complete: bool
     checklist: List[ChecklistItem]
     tool_insights: List[ToolInsight]
+    logs: List[SessionLogEntry] = Field(default_factory=list)
     markdown: str
     round_summaries: List[str]
     portrait: Optional[PortraitCard] = None

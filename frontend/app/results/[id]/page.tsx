@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { ChecklistPreview } from "@/components/checklist-preview";
+import { MockLogEntry, MockLogPanel } from "@/components/mock-log-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { downloadResults, getResults, getSummaryAudio } from "@/lib/api";
@@ -18,6 +19,7 @@ export default function ResultsPage() {
   const [toolInsights, setToolInsights] = useState<ToolInsight[]>([]);
   const [roundSummaries, setRoundSummaries] = useState<string[]>([]);
   const [portrait, setPortrait] = useState<PortraitCard | undefined>(undefined);
+  const [logs, setLogs] = useState<MockLogEntry[]>([]);
   const [isComplete, setIsComplete] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -98,12 +100,21 @@ export default function ResultsPage() {
           setRoundSummaries(res.round_summaries);
           setPortrait(res.portrait);
           setIsComplete(res.is_complete);
+          setLogs(
+            (res.logs || []).map((entry) => ({
+              id: `${entry.at}|${entry.source}|${entry.message}`,
+              at: entry.at,
+              source: entry.source,
+              message: entry.message
+            }))
+          );
         }
       } catch {
         if (!cancelled) {
           setChecklist([]);
           setToolInsights([]);
           setPortrait(undefined);
+          setLogs([]);
         }
       }
     })();
@@ -145,6 +156,8 @@ export default function ResultsPage() {
               window.open(downloadResults(sessionId), "_blank");
             }}
           />
+
+          {logs.length > 0 ? <MockLogPanel entries={logs} title="Логи интервью и инструментов" kicker="Trace" /> : null}
 
           <Card className="space-y-4 bg-[var(--card-2)]">
             <div className="flex flex-wrap gap-3">

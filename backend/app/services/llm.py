@@ -34,7 +34,7 @@ class LLMService:
                 temperature=0.2,
             )
 
-    async def _invoke_text(self, prompt: str) -> Optional[str]:
+    async def _invoke_text(self, prompt: str, timeout_seconds: float = 45.0) -> Optional[str]:
         if self._provider == "anthropic" and self._model is not None:
             response = await self._model.ainvoke(prompt)
             return str(response.content).strip()
@@ -50,7 +50,7 @@ class LLMService:
                 "generationConfig": {"temperature": 0.2},
             }
             try:
-                async with httpx.AsyncClient(timeout=45.0) as client:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                     resp = await client.post(url, params=params, json=payload)
                     resp.raise_for_status()
                     data = resp.json()
@@ -178,7 +178,7 @@ class LLMService:
         topic: str,
         round_number: int,
         questions: List[str],
-    ) -> list[str]:
+    ) -> tuple[list[str], str]:
         question_dump = "\n".join([f"{idx + 1}. {q}" for idx, q in enumerate(questions)])
         prompt = (
             "Ты играешь роль респондента интервью. "
@@ -189,11 +189,12 @@ class LLMService:
             f"Раунд: {round_number}\n"
             f"Вопросы:\n{question_dump}\n"
         )
-        response_text = await self._invoke_text(prompt)
+        # Mock mode should stay fast; do not block user for long.
+        response_text = await self._invoke_text(prompt, timeout_seconds=12.0)
         if response_text:
             parsed = self._parse_questions(response_text)
             if len(parsed) >= len(questions):
-                return parsed[: len(questions)]
+                return parsed[: len(questions)], "llm"
 
         fallback = []
         for idx, question in enumerate(questions, start=1):
@@ -201,7 +202,7 @@ class LLMService:
                 f"По вопросу {idx}: для темы '{topic}' приоритетом считаем измеримый результат и реалистичный план выполнения. "
                 f"Уточним детали после пилота. ({self._shorten(question, limit=80)})"
             )
-        return fallback[: len(questions)]
+        return fallback[: len(questions)], "fallback"
 
     def ensure_distinct_round_summary(
         self,

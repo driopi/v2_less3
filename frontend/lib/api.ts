@@ -142,7 +142,7 @@ export async function fetchMockAnswers(sessionId: string): Promise<MockAnswersRe
   try {
     res = await fetchWithTimeout(`${API_URL}/api/session/${sessionId}/mock-answers`, {
       method: "POST"
-    }, 30000);
+    }, 12000);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new Error("Превышено время ожидания генерации mock-ответов.");

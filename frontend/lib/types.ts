@@ -3,10 +3,17 @@ export interface Question {
   text: string;
 }
 
+export interface SessionLogEntry {
+  at: string;
+  source: string;
+  message: string;
+}
+
 export interface SessionStartResponse {
   session_id: string;
   round: number;
   mock_mode: boolean;
+  logs: SessionLogEntry[];
   questions: Question[];
 }
 
@@ -107,6 +114,7 @@ export interface SessionResultsResponse {
   is_complete: boolean;
   checklist: ChecklistItem[];
   tool_insights: ToolInsight[];
+  logs: SessionLogEntry[];
   markdown: string;
   round_summaries: string[];
   portrait?: PortraitCard;

@@ -68,15 +68,14 @@ export default function HomePage() {
                 type="button"
                 aria-pressed={mockMode}
                 onClick={() => setMockMode((prev) => !prev)}
-                className={`relative h-10 w-20 rounded-full border-4 border-[var(--line)] transition ${
-                  mockMode ? "bg-[#8fb07c]" : "bg-[#9aab92]"
+                className={`inline-flex h-11 w-24 appearance-none items-center rounded-full border-4 border-[var(--line)] p-1 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-[#6f8d62] ${
+                  mockMode ? "justify-end" : "justify-start"
+                } ${
+                  mockMode ? "bg-[#86a977]" : "bg-[#a8be90]"
                 }`}
               >
-                <span
-                  className={`absolute top-0.5 h-7 w-7 rounded-full border-4 border-[var(--line)] bg-[var(--card-2)] transition ${
-                    mockMode ? "left-10" : "left-1"
-                  }`}
-                />
+                <span className="h-7 w-7 rounded-full border-4 border-[var(--line)] bg-[var(--card)]" />
+                <span className="sr-only">{mockMode ? "Mock mode on" : "Mock mode off"}</span>
               </button>
             </label>
 

@@ -10,7 +10,7 @@ import { RoundIndicator } from "@/components/round-indicator";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { fetchMockAnswers, getSession, getSubmitJobStatus, submitRound, submitRoundMock, transcribeAudio } from "@/lib/api";
-import { Question, SubmitJobStatusResponse } from "@/lib/types";
+import { Question, SessionLogEntry, SubmitJobStatusResponse } from "@/lib/types";
 
 interface AnswerState {
   blob?: Blob;
@@ -24,6 +24,11 @@ const timestamp = () =>
     minute: "2-digit",
     second: "2-digit"
   });
+
+const toLogId = (at: string, source: string, message: string) => `${at}|${source}|${message}`;
+
+const buildLocalMockTranscript = (questionText: string, index: number, roundNumber: number): string =>
+  `Раунд ${roundNumber}, автоответ ${index + 1}: по вопросу "${questionText}" приоритет — зафиксировать измеримые критерии, риски и следующий шаг запуска.`;
 
 export default function SessionPage() {
   const params = useParams<{ id: string }>();
@@ -58,6 +63,25 @@ export default function SessionPage() {
     ]);
   };
 
+  const mergeServerLogs = (serverLogs: SessionLogEntry[]) => {
+    setLogs((prev) => {
+      const seen = new Set(prev.map((item) => item.id));
+      const next = [...prev];
+      serverLogs.forEach((entry) => {
+        const id = toLogId(entry.at, entry.source, entry.message);
+        if (seen.has(id)) return;
+        seen.add(id);
+        next.push({
+          id,
+          at: entry.at,
+          source: entry.source,
+          message: entry.message
+        });
+      });
+      return next;
+    });
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -67,6 +91,7 @@ export default function SessionPage() {
           setRound(data.round);
           setMockMode(data.mock_mode);
           setQuestions(data.questions);
+          mergeServerLogs(data.logs || []);
           if (data.mock_mode) {
             addLog("ui", "Сессия загружена в mock режиме");
           } else {
@@ -136,6 +161,12 @@ export default function SessionPage() {
         setMockPreparedRound(null);
         setSubmitJob(null);
         setIsSubmittingRound(false);
+        try {
+          const snapshot = await getSession(sessionId);
+          mergeServerLogs(snapshot.logs || []);
+        } catch {
+          // ignore snapshot fetch errors here
+        }
         stopPolling();
         addLog("job", `Переход к раунду ${result.round}`);
         return;
@@ -172,6 +203,9 @@ export default function SessionPage() {
       try {
         const generated = await fetchMockAnswers(sessionId);
         if (cancelled) return;
+        if (!generated.answers || generated.answers.length < 3) {
+          throw new Error("Сервис mock-ответов вернул неполные данные");
+        }
         const mapped: Record<string, AnswerState> = {};
         generated.answers.forEach((item) => {
           mapped[item.question_id] = {
@@ -184,7 +218,17 @@ export default function SessionPage() {
         generated.logs.forEach((line) => addLog("mock", line));
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Не удалось получить mock-ответы");
+          const mapped: Record<string, AnswerState> = {};
+          questions.forEach((question, idx) => {
+            mapped[question.id] = {
+              transcript: buildLocalMockTranscript(question.text, idx, round),
+              confirmed: true
+            };
+          });
+          setAnswers(mapped);
+          setMockPreparedRound(round);
+          addLog("mock", "Серверные mock-ответы недоступны, применен локальный fallback");
+          setError(null);
         }
       } finally {
         if (!cancelled) {
@@ -215,6 +259,9 @@ export default function SessionPage() {
               <p className="text-sm font-semibold leading-relaxed sm:text-base">
                 Микрофон не нужен: ответы генерируются автоматически и сразу подставляются как транскрипты.
               </p>
+              {isMockHydrating ? (
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Генерируем mock-ответы...</p>
+              ) : null}
             </Card>
           ) : null}
 
@@ -270,7 +317,7 @@ export default function SessionPage() {
             />
           ) : null}
 
-          {mockMode ? <MockLogPanel entries={logs} /> : null}
+          {mockMode ? <MockLogPanel entries={logs} title="Логи интервью" /> : null}
 
           <Card className="space-y-4 bg-[var(--card-2)]">
             <p className="text-sm font-semibold leading-relaxed sm:text-base">
