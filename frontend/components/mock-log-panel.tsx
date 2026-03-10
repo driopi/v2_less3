@@ -26,16 +26,18 @@ export function MockLogPanel({ entries, title = "Логи mock-режима", ki
         </p>
       </div>
 
-      <div className="max-h-80 space-y-2 overflow-y-auto rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-3">
+      <div className="max-h-80 overflow-y-auto rounded-md border-4 border-[var(--line)] bg-[var(--card)] px-4 py-3">
         {entries.length === 0 ? <p className="text-sm font-semibold text-[var(--muted)]">Ожидание событий...</p> : null}
-        {entries.map((entry) => (
-          <div key={entry.id} className="rounded-md border-4 border-[var(--line)] bg-[var(--card-2)] px-3 py-2">
-            <p className="text-xs font-black uppercase tracking-[0.08em] text-[var(--muted)]">
-              [{entry.at}] {entry.source.toUpperCase()}
-            </p>
-            <p className="mt-1 text-sm font-semibold leading-relaxed sm:text-base">{entry.message}</p>
-          </div>
-        ))}
+        <div className="space-y-2">
+          {entries.map((entry) => (
+            <div key={entry.id} className="py-1">
+              <p className="text-xs font-black uppercase tracking-[0.08em] text-[var(--muted)]">
+                [{entry.at}] {entry.source.toUpperCase()}
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-relaxed sm:text-base">{entry.message}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </Card>
   );
