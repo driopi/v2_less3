@@ -12,6 +12,7 @@ from app.services.mcp import MCPToolProvider
 from app.services.portrait import PortraitService
 from app.services.transcription import TranscriptionService
 from app.services.tts import TTSService
+from app.storage.job_store import JobStore
 from app.storage.session_store import SessionStore
 
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     app.state.mcp_provider = mcp_provider
     app.state.graph_service = ChecklistGraphService(llm_service, portrait_service=portrait_service)
     app.state.session_store = SessionStore()
+    app.state.job_store = JobStore()
 
     yield
 

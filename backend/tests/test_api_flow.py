@@ -1,8 +1,20 @@
 import base64
+import time
 
 
 def _fake_webm_b64() -> str:
     return base64.b64encode(b"RIFF....FAKEAUDIO").decode("utf-8")
+
+
+def _wait_job_completed(client, job_id: str, max_attempts: int = 300):
+    for _ in range(max_attempts):
+        status = client.get(f"/api/session/jobs/{job_id}")
+        assert status.status_code == 200
+        payload = status.json()
+        if payload["status"] in {"completed", "failed"}:
+            return payload
+        time.sleep(0.01)
+    raise AssertionError("submit job did not finish in time")
 
 
 def _complete_session(client):
@@ -27,7 +39,13 @@ def _complete_session(client):
         }
         submit = client.post(f"/api/session/{session_id}/submit", json=payload)
         assert submit.status_code == 200
-        payload = submit.json()
+        accepted = submit.json()
+        assert accepted["job_id"]
+
+        completed = _wait_job_completed(client, accepted["job_id"])
+        assert completed["status"] == "completed"
+        payload = completed["result"]
+        assert payload
         assert payload["round_summary"]
 
         if expected_round < 3:
@@ -61,6 +79,7 @@ def test_full_9_question_flow_and_results(client):
     results_payload = results.json()
     assert results_payload["is_complete"] is True
     assert len(results_payload["checklist"]) >= 1
+    assert len(results_payload["tool_insights"]) >= 1
     assert "Чеклист созвона" in results_payload["markdown"]
     assert results_payload["portrait"] is not None
     assert 1 <= results_payload["portrait"]["emotional_stability"] <= 10

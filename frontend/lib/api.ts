@@ -1,7 +1,8 @@
 import {
+  SessionSubmitAcceptedResponse,
   SessionResultsResponse,
   SessionStartResponse,
-  SessionSubmitResponse
+  SubmitJobStatusResponse
 } from "@/lib/types";
 
 const API_URL =
@@ -86,7 +87,7 @@ export async function submitRound(
   sessionId: string,
   questionIds: string[],
   blobs: Blob[]
-): Promise<SessionSubmitResponse> {
+): Promise<SessionSubmitAcceptedResponse> {
   const formData = new FormData();
   formData.append("question_ids", questionIds.join(","));
 
@@ -99,14 +100,28 @@ export async function submitRound(
     res = await fetchWithTimeout(`${API_URL}/api/session/${sessionId}/submit`, {
       method: "POST",
       body: formData
-    }, 180000);
+    }, 30000);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("Обработка ответов заняла слишком много времени.");
+      throw new Error("Превышено время ожидания запуска обработки.");
     }
     throw err;
   }
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to submit answers"));
+  return res.json();
+}
+
+export async function getSubmitJobStatus(jobId: string): Promise<SubmitJobStatusResponse> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_URL}/api/session/jobs/${jobId}`, { cache: "no-store" }, 20000);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Превышено время ожидания статуса обработки.");
+    }
+    throw err;
+  }
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to fetch submit job status"));
   return res.json();
 }
 

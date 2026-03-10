@@ -1,6 +1,7 @@
 import os
 import unittest
 import base64
+import time
 
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,18 @@ from app.main import app  # noqa: E402
 
 def fake_webm_b64() -> str:
     return base64.b64encode(b"RIFF....FAKEAUDIO").decode("utf-8")
+
+
+def wait_job_completed(client, job_id: str, max_attempts: int = 300):
+    for _ in range(max_attempts):
+        status = client.get(f"/api/session/jobs/{job_id}")
+        if status.status_code != 200:
+            raise AssertionError(f"Failed to fetch job status for {job_id}")
+        payload = status.json()
+        if payload["status"] in {"completed", "failed"}:
+            return payload
+        time.sleep(0.01)
+    raise AssertionError("submit job did not finish in time")
 
 
 class PreflightFlowTest(unittest.TestCase):
@@ -62,7 +75,11 @@ class PreflightFlowTest(unittest.TestCase):
             submit = self.client.post(f"/api/session/{session_id}/submit", json=payload)
 
             self.assertEqual(submit.status_code, 200)
-            payload = submit.json()
+            accepted = submit.json()
+            self.assertTrue(accepted["job_id"])
+            job_done = wait_job_completed(self.client, accepted["job_id"])
+            self.assertEqual(job_done["status"], "completed")
+            payload = job_done["result"]
             self.assertTrue(payload["round_summary"])
 
             if expected_round < 3:
@@ -82,6 +99,7 @@ class PreflightFlowTest(unittest.TestCase):
         results_payload = results.json()
         self.assertTrue(results_payload["is_complete"])
         self.assertGreaterEqual(len(results_payload["checklist"]), 1)
+        self.assertGreaterEqual(len(results_payload["tool_insights"]), 1)
         self.assertIn("Чеклист созвона", results_payload["markdown"])
         self.assertIsNotNone(results_payload["portrait"])
         self.assertGreaterEqual(results_payload["portrait"]["emotional_stability"], 1)

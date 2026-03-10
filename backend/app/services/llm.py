@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -11,6 +10,8 @@ import httpx
 from app.config import Settings
 from app.models.checklist import ChecklistItem
 from app.models.session import Answer
+from app.models.tooling import ToolInsight
+from app.services.insight_tools import InsightToolsService
 from app.services.mcp import MCPToolProvider
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class LLMService:
     def __init__(self, settings: Settings, mcp_provider: Optional[MCPToolProvider] = None) -> None:
         self.settings = settings
         self._mcp_provider = mcp_provider
+        self._insight_tools = InsightToolsService(mcp_provider=mcp_provider)
         self._provider = settings.llm_provider.lower().strip()
         self._model = None
 
@@ -68,29 +70,39 @@ class LLMService:
 
         return None
 
-    async def _research_context(self, topic: str) -> str:
-        if self._mcp_provider is None:
-            return ""
+    def plan_tools_for_round(
+        self,
+        *,
+        round_number: int,
+        topic: str,
+        all_answers: List[Answer],
+        latest_round_answers: List[Answer],
+        target: str,
+    ) -> List[str]:
+        return self._insight_tools.plan_tools(
+            round_number=round_number,
+            topic=topic,
+            all_answers=all_answers,
+            latest_round_answers=latest_round_answers,
+            target=target,
+        )
 
-        try:
-            tools = await asyncio.wait_for(self._mcp_provider.get_tools(), timeout=10.0)
-        except Exception:
-            return ""
-        if not tools:
-            return ""
+    async def run_tools_for_round(
+        self,
+        *,
+        planned_tools: List[str],
+        topic: str,
+        all_answers: List[Answer],
+    ) -> List[ToolInsight]:
+        return await self._insight_tools.run_tools(
+            planned_tools=planned_tools,
+            topic=topic,
+            all_answers=all_answers,
+        )
 
-        snippets: list[str] = []
-        for tool in tools[:2]:
-            try:
-                result = await asyncio.wait_for(tool.ainvoke({"query": topic}), timeout=6.0)
-            except Exception:
-                try:
-                    result = await asyncio.wait_for(tool.ainvoke(topic), timeout=6.0)
-                except Exception:
-                    continue
-            snippets.append(str(result)[:500])
-
-        return "\n".join(snippets)
+    @staticmethod
+    def render_tool_context(insights: List[ToolInsight]) -> str:
+        return InsightToolsService.render_context(insights)
 
     async def generate_initial_questions(self, goal: str, topic: str) -> list[str]:
         prompt = (
@@ -115,13 +127,13 @@ class LLMService:
         all_answers: List[Answer],
         round_summaries: List[str],
         next_round: int,
+        tool_context: str = "",
     ) -> list[str]:
         previous_questions = [a.question_text for a in all_answers]
         answer_dump = "\n".join(
             [f"- {a.question_text}: {a.audio_transcript}" for a in all_answers]
         )
         summary_dump = "\n".join(round_summaries)
-        research = await self._research_context(topic)
         prompt = (
             "На основе ответов и summary создай ровно 3 уточняющих вопроса. "
             "Новые вопросы не должны дублировать старые. "
@@ -131,7 +143,7 @@ class LLMService:
             f"Раунд: {next_round}\n"
             f"Summary: {summary_dump}\n"
             f"Ответы: {answer_dump}\n"
-            f"Внешний контекст (MCP Tavily/HF): {research}\n"
+            f"{tool_context}\n"
         )
         response_text = await self._invoke_text(prompt)
         if response_text:
@@ -182,10 +194,10 @@ class LLMService:
         topic: str,
         answers: List[Answer],
         round_summaries: List[str],
+        tool_context: str = "",
     ) -> list[ChecklistItem]:
         answers_dump = "\n".join([f"- {a.question_text}: {a.audio_transcript}" for a in answers])
         summary_dump = "\n".join(round_summaries)
-        research = await self._research_context(topic)
 
         prompt = (
             "Построй итоговый checklist в JSON. Формат: "
@@ -194,7 +206,7 @@ class LLMService:
             f"Цель: {goal}\nТема: {topic}\n"
             f"Summary: {summary_dump}\n"
             f"Ответы:\n{answers_dump}\n"
-            f"Внешний контекст (MCP Tavily/HF): {research}\n"
+            f"{tool_context}\n"
             "Верни только JSON-массив."
         )
 

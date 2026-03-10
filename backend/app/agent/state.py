@@ -4,6 +4,7 @@ from app.models.checklist import ChecklistItem
 from app.models.portrait import PortraitCard
 from app.models.question import Question
 from app.models.session import Answer
+from app.models.tooling import ToolInsight
 
 
 class AgentState(TypedDict):
@@ -18,6 +19,7 @@ class AgentState(TypedDict):
     round_summaries: List[str]
     round_summary: str
     checklist_items: List[ChecklistItem]
+    tool_insights: List[ToolInsight]
     portrait: Optional[PortraitCard]
     markdown_content: str
     is_complete: bool

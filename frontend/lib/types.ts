@@ -17,6 +17,40 @@ export interface SessionSubmitResponse {
   checklist_preview?: string;
 }
 
+export interface SessionSubmitAcceptedResponse {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  current_step?: string;
+  eta_seconds_left: number;
+  progress_pct: number;
+}
+
+export interface JobStep {
+  key: string;
+  label: string;
+  status: "pending" | "running" | "completed" | "failed";
+  eta_seconds: number;
+}
+
+export interface SubmitJobStatusResponse {
+  job_id: string;
+  session_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  current_step?: string;
+  steps: JobStep[];
+  eta_seconds_left: number;
+  progress_pct: number;
+  error?: string;
+  result?: SessionSubmitResponse;
+}
+
+export interface ToolInsight {
+  tool_name: string;
+  title: string;
+  summary: string;
+  details: Record<string, string>;
+}
+
 export interface ChecklistItem {
   category: string;
   item: string;
@@ -58,6 +92,7 @@ export interface SessionResultsResponse {
   session_id: string;
   is_complete: boolean;
   checklist: ChecklistItem[];
+  tool_insights: ToolInsight[];
   markdown: string;
   round_summaries: string[];
   portrait?: PortraitCard;

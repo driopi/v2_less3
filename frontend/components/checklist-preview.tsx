@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ChecklistItem, PortraitCard } from "@/lib/types";
+import { ChecklistItem, PortraitCard, ToolInsight } from "@/lib/types";
 
 interface ChecklistPreviewProps {
   sessionId: string;
   checklist: ChecklistItem[];
+  toolInsights: ToolInsight[];
   roundSummaries: string[];
   portrait?: PortraitCard;
   onDownload: () => void;
@@ -33,7 +34,7 @@ function groupByCategory(items: ChecklistItem[]) {
   }, {});
 }
 
-export function ChecklistPreview({ sessionId, checklist, roundSummaries, portrait, onDownload }: ChecklistPreviewProps) {
+export function ChecklistPreview({ sessionId, checklist, toolInsights, roundSummaries, portrait, onDownload }: ChecklistPreviewProps) {
   const grouped = groupByCategory(checklist);
   const categories = Object.keys(grouped);
 
@@ -105,6 +106,25 @@ export function ChecklistPreview({ sessionId, checklist, roundSummaries, portrai
             <p key={idx} className="rounded-md border-4 border-[var(--line)] bg-[var(--card)] px-4 py-3 text-sm font-semibold leading-relaxed sm:text-base">
               {idx + 1}. {summary}
             </p>
+          ))}
+        </Card>
+      ) : null}
+
+      {toolInsights.length > 0 ? (
+        <Card className="space-y-3 bg-[var(--card-2)]">
+          <h3 className="text-xl font-black uppercase tracking-[0.04em] sm:text-2xl">Инструменты агента</h3>
+          {toolInsights.map((insight, idx) => (
+            <div key={`${insight.tool_name}-${idx}`} className="space-y-2 rounded-md border-4 border-[var(--line)] bg-[var(--card)] p-4">
+              <p className="text-sm font-black uppercase tracking-[0.07em]">{insight.title}</p>
+              <p className="text-sm font-semibold leading-relaxed sm:text-base">{insight.summary}</p>
+              {Object.keys(insight.details).length > 0 ? (
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+                  {Object.entries(insight.details)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join(" • ")}
+                </p>
+              ) : null}
+            </div>
           ))}
         </Card>
       ) : null}

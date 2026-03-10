@@ -8,14 +8,16 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from app.agent.state import AgentState
+from app.models.job import JobResult, JobStatusResponse, SessionSubmitAcceptedResponse
+from app.models.question import Question
 from app.models.session import (
     Answer,
     SessionData,
     SessionResultsResponse,
     SessionStartResponse,
-    SessionSubmitResponse,
     StartSessionRequest,
 )
+from app.services.file_generator import build_markdown
 
 router = APIRouter(prefix="/api/session", tags=["session"])
 
@@ -25,6 +27,173 @@ def _decode_base64_audio(encoded: str) -> bytes:
         return base64.b64decode(encoded.encode("utf-8"))
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Invalid audio_base64 payload") from exc
+
+
+def _job_steps_for_round(current_round: int, max_rounds: int) -> list[str]:
+    steps = ["transcribe_1", "transcribe_2", "transcribe_3", "analyze_round", "tool_planning", "tool_execution"]
+    if current_round < max_rounds:
+        steps.append("generate_next_questions")
+    else:
+        steps.append("finalize")
+    return steps
+
+
+def _to_questions(texts: list[str]) -> list[Question]:
+    return [Question(id=str(uuid4()), text=text) for text in texts[:3]]
+
+
+async def _process_submit_job(
+    *,
+    job_id: str,
+    session_id: str,
+    question_id_list: list[str],
+    files_payload: list[tuple[bytes, str]],
+    app,
+) -> None:
+    store = app.state.session_store
+    transcription_service = app.state.transcription_service
+    llm_service = app.state.llm_service
+    portrait_service = app.state.portrait_service
+    job_store = app.state.job_store
+
+    try:
+        job_store.mark_running(job_id)
+        session = store.get(session_id)
+        if not session:
+            raise RuntimeError("Session not found")
+        if session.is_complete:
+            raise RuntimeError("Session already completed")
+
+        current_question_map = {q.id: q.text for q in session.current_questions}
+        round_answers: list[Answer] = []
+
+        for idx, (audio_bytes, filename) in enumerate(files_payload):
+            step_key = f"transcribe_{idx + 1}"
+            job_store.mark_step_running(job_id, step_key)
+            transcript = await transcription_service.transcribe(audio_bytes, filename=filename)
+            job_store.mark_step_completed(job_id, step_key)
+            qid = question_id_list[idx]
+            round_answers.append(
+                Answer(
+                    question_id=qid,
+                    question_text=current_question_map.get(qid, f"Question {idx + 1}"),
+                    audio_transcript=transcript,
+                    round_number=session.current_round,
+                )
+            )
+
+        all_answers = [*session.all_answers, *round_answers]
+
+        job_store.mark_step_running(job_id, "analyze_round")
+        summary_candidate = await llm_service.summarize_round(
+            round_number=session.current_round,
+            answers=round_answers,
+        )
+        round_summary = llm_service.ensure_distinct_round_summary(
+            round_number=session.current_round,
+            answers=round_answers,
+            previous_summaries=session.round_summaries,
+            candidate=summary_candidate,
+        )
+        round_summaries = [*session.round_summaries, round_summary]
+        job_store.mark_step_completed(job_id, "analyze_round")
+
+        target = "next_questions" if session.current_round < session.max_rounds else "final_checklist"
+
+        job_store.mark_step_running(job_id, "tool_planning")
+        planned_tools = llm_service.plan_tools_for_round(
+            round_number=session.current_round,
+            topic=session.topic,
+            all_answers=all_answers,
+            latest_round_answers=round_answers,
+            target=target,
+        )
+        job_store.mark_step_completed(job_id, "tool_planning")
+
+        job_store.mark_step_running(job_id, "tool_execution")
+        tool_insights = await llm_service.run_tools_for_round(
+            planned_tools=planned_tools,
+            topic=session.topic,
+            all_answers=all_answers,
+        )
+        tool_context = llm_service.render_tool_context(tool_insights)
+        job_store.mark_step_completed(job_id, "tool_execution")
+
+        if session.current_round < session.max_rounds:
+            job_store.mark_step_running(job_id, "generate_next_questions")
+            next_round = session.current_round + 1
+            next_questions_text = await llm_service.generate_next_questions(
+                goal=session.goal,
+                topic=session.topic,
+                all_answers=all_answers,
+                round_summaries=round_summaries,
+                next_round=next_round,
+                tool_context=tool_context,
+            )
+            next_questions = _to_questions(next_questions_text)
+            job_store.mark_step_completed(job_id, "generate_next_questions")
+
+            session.current_round = next_round
+            session.current_questions = next_questions
+            session.all_answers = all_answers
+            session.round_summaries = round_summaries
+            session.tool_insights = [*session.tool_insights, *tool_insights]
+            session.is_complete = False
+            store.update(session)
+
+            job_store.mark_completed(
+                job_id,
+                JobResult(
+                    round=session.current_round,
+                    questions=next_questions,
+                    round_summary=round_summary,
+                    is_complete=False,
+                    checklist_preview=None,
+                ),
+            )
+            return
+
+        job_store.mark_step_running(job_id, "finalize")
+        checklist = await llm_service.build_final_checklist(
+            goal=session.goal,
+            topic=session.topic,
+            answers=all_answers,
+            round_summaries=round_summaries,
+            tool_context=tool_context,
+        )
+        portrait = portrait_service.analyze(all_answers)
+        all_tool_insights = [*session.tool_insights, *tool_insights]
+        markdown = build_markdown(
+            session_id=session.session_id,
+            topic=session.topic,
+            checklist=checklist,
+            answers=all_answers,
+            tool_insights=all_tool_insights,
+        )
+        job_store.mark_step_completed(job_id, "finalize")
+
+        session.current_questions = []
+        session.all_answers = all_answers
+        session.round_summaries = round_summaries
+        session.checklist_items = checklist
+        session.portrait = portrait
+        session.tool_insights = all_tool_insights
+        session.markdown_content = markdown
+        session.is_complete = True
+        store.update(session)
+
+        job_store.mark_completed(
+            job_id,
+            JobResult(
+                round=session.current_round,
+                questions=[],
+                round_summary=round_summary,
+                is_complete=True,
+                checklist_preview=markdown,
+            ),
+        )
+    except Exception as exc:
+        job_store.mark_failed(job_id, str(exc))
 
 
 @router.post("/start", response_model=SessionStartResponse)
@@ -45,6 +214,7 @@ async def start_session(payload: StartSessionRequest, request: Request):
         "round_summaries": [],
         "round_summary": "",
         "checklist_items": [],
+        "tool_insights": [],
         "portrait": None,
         "markdown_content": "",
         "is_complete": False,
@@ -105,14 +275,13 @@ async def transcribe_audio(request: Request):
     return {"transcript": transcript}
 
 
-@router.post("/{session_id}/submit", response_model=SessionSubmitResponse)
+@router.post("/{session_id}/submit", response_model=SessionSubmitAcceptedResponse)
 async def submit_answers(
     session_id: str,
     request: Request,
 ):
     store = request.app.state.session_store
-    graph_service = request.app.state.graph_service
-    transcription_service = request.app.state.transcription_service
+    job_store = request.app.state.job_store
 
     session = store.get(session_id)
     if not session:
@@ -139,66 +308,40 @@ async def submit_answers(
     if len(files_payload) != 3 or len(question_id_list) != 3:
         raise HTTPException(status_code=422, detail="Expected 3 audio files and 3 question IDs")
 
-    current_question_map = {q.id: q.text for q in session.current_questions}
-
-    round_answers: list[Answer] = []
-    for idx, (audio_bytes, filename) in enumerate(files_payload):
-        transcript = await transcription_service.transcribe(audio_bytes, filename=filename)
-        qid = question_id_list[idx]
-        round_answers.append(
-            Answer(
-                question_id=qid,
-                question_text=current_question_map.get(qid, f"Question {idx + 1}"),
-                audio_transcript=transcript,
-                round_number=session.current_round,
-            )
-        )
-
-    all_answers = [*session.all_answers, *round_answers]
-
-    state: AgentState = {
-        "session_id": session.session_id,
-        "goal": session.goal,
-        "topic": session.topic,
-        "current_round": session.current_round,
-        "max_rounds": session.max_rounds,
-        "current_questions": session.current_questions,
-        "all_answers": all_answers,
-        "latest_round_answers": round_answers,
-        "round_summaries": session.round_summaries,
-        "round_summary": "",
-        "checklist_items": session.checklist_items,
-        "portrait": session.portrait,
-        "markdown_content": session.markdown_content,
-        "is_complete": session.is_complete,
-    }
-
-    try:
-        # Final round may include slower LLM/MCP calls; guard against infinite waits.
-        output = await asyncio.wait_for(graph_service.advance(state), timeout=120.0)
-    except asyncio.TimeoutError as exc:
-        raise HTTPException(
-            status_code=504,
-            detail="Обработка раунда заняла слишком много времени. Повторите отправку.",
-        ) from exc
-
-    session.current_round = output["current_round"]
-    session.current_questions = output.get("current_questions", [])
-    session.all_answers = all_answers
-    session.round_summaries = output.get("round_summaries", session.round_summaries)
-    session.checklist_items = output.get("checklist_items", session.checklist_items)
-    session.portrait = output.get("portrait", session.portrait)
-    session.markdown_content = output.get("markdown_content", session.markdown_content)
-    session.is_complete = output.get("is_complete", False)
-    store.update(session)
-
-    return SessionSubmitResponse(
-        round=session.current_round,
-        questions=session.current_questions,
-        round_summary=output.get("round_summary", ""),
-        is_complete=session.is_complete,
-        checklist_preview=session.markdown_content if session.is_complete else None,
+    job_id = str(uuid4())
+    record = job_store.create(
+        job_id=job_id,
+        session_id=session_id,
+        step_keys=_job_steps_for_round(session.current_round, session.max_rounds),
     )
+
+    asyncio.create_task(
+        _process_submit_job(
+            job_id=job_id,
+            session_id=session_id,
+            question_id_list=question_id_list,
+            files_payload=files_payload,
+            app=request.app,
+        )
+    )
+
+    snapshot = record.as_response()
+    return SessionSubmitAcceptedResponse(
+        job_id=snapshot.job_id,
+        status=snapshot.status,
+        current_step=snapshot.current_step,
+        eta_seconds_left=snapshot.eta_seconds_left,
+        progress_pct=snapshot.progress_pct,
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+async def get_submit_job(job_id: str, request: Request):
+    job_store = request.app.state.job_store
+    record = job_store.get(job_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return record.as_response()
 
 
 @router.get("/{session_id}/results", response_model=SessionResultsResponse)
@@ -212,6 +355,7 @@ async def get_results(session_id: str, request: Request):
         session_id=session.session_id,
         is_complete=session.is_complete,
         checklist=session.checklist_items,
+        tool_insights=session.tool_insights,
         markdown=session.markdown_content,
         round_summaries=session.round_summaries,
         portrait=session.portrait,

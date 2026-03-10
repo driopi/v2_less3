@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { JobProgressPanel } from "@/components/job-progress-panel";
 import { QuestionCard } from "@/components/question-card";
 import { RoundIndicator } from "@/components/round-indicator";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getSession, submitRound, transcribeAudio } from "@/lib/api";
-import { Question } from "@/lib/types";
+import { getSession, getSubmitJobStatus, submitRound, transcribeAudio } from "@/lib/api";
+import { Question, SubmitJobStatusResponse } from "@/lib/types";
 
 interface AnswerState {
   blob?: Blob;
@@ -25,8 +26,11 @@ export default function SessionPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [roundSummaries, setRoundSummaries] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSubmittingRound, setIsSubmittingRound] = useState(false);
+  const [submitJob, setSubmitJob] = useState<SubmitJobStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +49,71 @@ export default function SessionPage() {
       cancelled = true;
     };
   }, [sessionId]);
+
+  const stopPolling = () => {
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
+  const pollSubmitJob = async (jobId: string) => {
+    try {
+      const status = await getSubmitJobStatus(jobId);
+      setSubmitJob(status);
+
+      if (status.status === "failed") {
+        setError(status.error || "Ошибка обработки раунда");
+        setIsSubmittingRound(false);
+        stopPolling();
+        return;
+      }
+
+      if (status.status === "completed") {
+        const result = status.result;
+        if (!result) {
+          setError("Результат обработки не получен");
+          setIsSubmittingRound(false);
+          stopPolling();
+          return;
+        }
+
+        if (result.round_summary) {
+          setRoundSummaries((prev) => [...prev, result.round_summary]);
+        }
+
+        if (result.is_complete) {
+          setIsSubmittingRound(false);
+          stopPolling();
+          router.push(`/results/${sessionId}`);
+          return;
+        }
+
+        setRound(result.round);
+        setQuestions(result.questions);
+        setAnswers({});
+        setSubmitJob(null);
+        setIsSubmittingRound(false);
+        stopPolling();
+        return;
+      }
+
+      stopPolling();
+      pollTimerRef.current = window.setTimeout(() => {
+        void pollSubmitJob(jobId);
+      }, 900);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось получить статус обработки");
+      setIsSubmittingRound(false);
+      stopPolling();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, []);
 
   const allConfirmed = useMemo(
     () => questions.length === 3 && questions.every((q) => Boolean(answers[q.id]?.blob) && answers[q.id]?.confirmed),
@@ -67,7 +136,7 @@ export default function SessionPage() {
                 isAnswered={Boolean(answers[question.id]?.blob)}
                 isConfirmed={Boolean(answers[question.id]?.confirmed)}
                 onAnswer={async (blob) => {
-                  setIsLoading(true);
+                  setIsTranscribing(true);
                   setError(null);
                   try {
                     const transcript = await transcribeAudio(blob);
@@ -82,7 +151,7 @@ export default function SessionPage() {
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Не удалось транскрибировать аудио");
                   } finally {
-                    setIsLoading(false);
+                    setIsTranscribing(false);
                   }
                 }}
                 onConfirm={() => {
@@ -98,16 +167,26 @@ export default function SessionPage() {
             ))}
           </section>
 
+          {submitJob ? (
+            <JobProgressPanel
+              etaSecondsLeft={submitJob.eta_seconds_left}
+              progressPct={submitJob.progress_pct}
+              steps={submitJob.steps}
+              currentStep={submitJob.current_step}
+            />
+          ) : null}
+
           <Card className="space-y-4 bg-[var(--card-2)]">
             <p className="text-sm font-semibold leading-relaxed sm:text-base">
-              Когда все 3 ответа подтверждены, отправьте раунд. После 3-го раунда появится итоговое резюме.
+              Когда все 3 ответа подтверждены, отправьте раунд. Пока идет обработка, можно оставаться на странице: прогресс, ETA и этапы обновляются автоматически.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button
                 className="w-full sm:w-auto"
-                disabled={!allConfirmed || isLoading}
+                disabled={!allConfirmed || isTranscribing || isSubmittingRound}
                 onClick={async () => {
-                  setIsLoading(true);
+                  setIsSubmittingRound(true);
+                  setSubmitJob(null);
                   setError(null);
                   try {
                     const questionIds = questions.map((q) => q.id);
@@ -117,27 +196,25 @@ export default function SessionPage() {
                       throw new Error("three answers required");
                     }
 
-                    const result = await submitRound(sessionId, questionIds, blobs);
-
-                    if (result.round_summary) {
-                      setRoundSummaries((prev) => [...prev, result.round_summary]);
-                    }
-
-                    if (result.is_complete) {
-                      router.push(`/results/${sessionId}`);
-                    } else {
-                      setRound(result.round);
-                      setQuestions(result.questions);
-                      setAnswers({});
-                    }
+                    const accepted = await submitRound(sessionId, questionIds, blobs);
+                    const initialStatus: SubmitJobStatusResponse = {
+                      job_id: accepted.job_id,
+                      session_id: sessionId,
+                      status: accepted.status,
+                      current_step: accepted.current_step,
+                      steps: [],
+                      eta_seconds_left: accepted.eta_seconds_left,
+                      progress_pct: accepted.progress_pct
+                    };
+                    setSubmitJob(initialStatus);
+                    await pollSubmitJob(accepted.job_id);
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Не удалось отправить ответы");
-                  } finally {
-                    setIsLoading(false);
+                    setIsSubmittingRound(false);
                   }
                 }}
               >
-                {isLoading ? "Обрабатываю..." : "Отправить ответы"}
+                {isSubmittingRound ? "Обрабатываю..." : "Отправить ответы"}
               </Button>
 
               <Button className="w-full sm:w-auto" variant="secondary" onClick={() => router.push("/")}>
