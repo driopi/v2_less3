@@ -240,7 +240,7 @@ export default function SessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [mockMode, questions, round, isSubmittingRound, isMockHydrating, mockPreparedRound, sessionId]);
+  }, [mockMode, questions, round, isSubmittingRound, mockPreparedRound, sessionId]);
 
   const allConfirmed = useMemo(
     () => questions.length === 3 && questions.every((q) => Boolean(answers[q.id]?.transcript) && answers[q.id]?.confirmed),
