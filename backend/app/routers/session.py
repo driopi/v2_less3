@@ -62,6 +62,20 @@ def _mock_initial_question_texts() -> list[str]:
     ]
 
 
+def _mock_initial_answer_texts(topic: str) -> list[str]:
+    if "теннис" in topic.lower():
+        return [
+            "Цель: провести турнир без срывов, собрать не менее 180 участников и получить NPS выше 8/10.",
+            "Ограничения: подготовка 6 недель, бюджет 1.2 млн рублей, команда 1 продюсер + 2 координатора + 8 волонтеров в день события.",
+            "Риски: погода, пересечения по кортам и задержки подрядчиков; снижаем резервным планом, буфером времени и ежедневным контрольным листом.",
+        ]
+    return [
+        "Цель: зафиксировать решение по запуску пилота и ожидаемый бизнес-эффект с конкретными KPI.",
+        "Ограничения: фиксированный дедлайн, ограниченный бюджет и работа текущей командой без расширения штата.",
+        "Риски: неполные данные и задержки согласований; снижаем через владельца решения, weekly review и контрольные точки.",
+    ]
+
+
 async def _process_submit_job(
     *,
     job_id: str,
@@ -326,12 +340,16 @@ async def generate_mock_answers(session_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Expected exactly 3 active questions")
 
     question_texts = [q.text for q in questions]
-    transcripts, source = await llm_service.generate_mock_answers(
-        goal=session.goal,
-        topic=session.topic,
-        round_number=session.current_round,
-        questions=question_texts,
-    )
+    if session.current_round == 1 and question_texts == _mock_initial_question_texts():
+        transcripts = _mock_initial_answer_texts(session.topic)
+        source = "preset_round1"
+    else:
+        transcripts, source = await llm_service.generate_mock_answers(
+            goal=session.goal,
+            topic=session.topic,
+            round_number=session.current_round,
+            questions=question_texts,
+        )
     if len(transcripts) < 3:
         transcripts = [
             *transcripts,
